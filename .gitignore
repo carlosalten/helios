@@ -1,0 +1,22 @@
+# Dependencias
+node_modules/
+
+# Build outputs
+.output/
+.nuxt/
+dist/
+
+# Prisma generated
+generated/
+
+# Entorno
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/settings.json
+
+# OS
+.DS_Store
+Thumbs.db

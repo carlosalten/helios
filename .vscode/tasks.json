@@ -1,0 +1,65 @@
+{
+   "version": "2.0.0",
+   "tasks": [
+      {
+         "label": "🚀 Levantar todos los servicios",
+         "dependsOn": [
+            "auth-service dev",
+            "reportes-service dev",
+            "horario-service dev",
+            "frontend dev"
+         ],
+         "dependsOrder": "parallel",
+         "group": { "kind": "build", "isDefault": true },
+         "presentation": { "reveal": "always" }
+      },
+      {
+         "label": "auth-service dev",
+         "type": "shell",
+         "command": "npm run dev",
+         "options": { "cwd": "${workspaceFolder}/packages/auth-service" },
+         "presentation": {
+            "panel": "dedicated",
+            "group": "servicios",
+            "reveal": "always"
+         },
+         "problemMatcher": []
+      },
+      {
+         "label": "reportes-service dev",
+         "type": "shell",
+         "command": "npm run dev",
+         "options": { "cwd": "${workspaceFolder}/packages/reportes-service" },
+         "presentation": {
+            "panel": "dedicated",
+            "group": "servicios",
+            "reveal": "always"
+         },
+         "problemMatcher": []
+      },
+      {
+         "label": "horario-service dev",
+         "type": "shell",
+         "command": "npm run dev",
+         "options": { "cwd": "${workspaceFolder}/packages/horario-service" },
+         "presentation": {
+            "panel": "dedicated",
+            "group": "servicios",
+            "reveal": "always"
+         },
+         "problemMatcher": []
+      },
+      {
+         "label": "frontend dev",
+         "type": "shell",
+         "command": "npm run dev",
+         "options": { "cwd": "${workspaceFolder}/packages/frontend" },
+         "presentation": {
+            "panel": "dedicated",
+            "group": "servicios",
+            "reveal": "always"
+         },
+         "problemMatcher": []
+      }
+   ]
+}

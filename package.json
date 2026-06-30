@@ -1,0 +1,14 @@
+{
+   "name": "helios",
+   "private": true,
+   "workspaces": [
+      "packages/*"
+   ],
+   "scripts": {
+      "dev": "concurrently -n auth,reportes,horario,frontend -c cyan,yellow,green,magenta \"npm run dev -w auth-service\" \"npm run dev -w reportes-service\" \"npm run dev -w horario-service\" \"npm run dev -w frontend\"",
+      "build:all": "npm run build -w auth-service && npm run build -w reportes-service && npm run build -w horario-service && npm run build -w frontend"
+   },
+   "devDependencies": {
+      "concurrently": "^9.0.0"
+   }
+}
