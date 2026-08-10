@@ -1,0 +1,30 @@
+export type JornadaLaboral = 'COMPLETA' | 'PARCIAL'
+
+export const JORNADAS_LABORALES: { valor: JornadaLaboral; label: string }[] = [
+   { valor: 'COMPLETA', label: 'Jornada completa' },
+   { valor: 'PARCIAL', label: 'Jornada parcial' },
+]
+
+export interface Rol {
+   id: number
+   nombre: string
+   // Mayor número = más alto en la jerarquía. Ver SesionUsuario.jerarquiaRol.
+   jerarquia: number
+}
+
+export interface PersonaBase {
+   id: number
+   email: string
+   nombre: string
+   apellido: string
+   activo: boolean
+   rolId: number
+   jornadaLaboral: JornadaLaboral | null
+   rol: Rol | null
+}
+
+export interface Persona extends PersonaBase {
+   // Solo lo devuelve GET/POST /api/personas: indica si la persona tiene contraseña
+   // asignada (cuenta de acceso), sin exponer nunca el hash.
+   tieneContrasena: boolean
+}

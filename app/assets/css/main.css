@@ -1,0 +1,167 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+/* El modo oscuro no aplica al imprimir. La clase `.dark` sigue en <html> cuando el usuario manda
+   a imprimir, así que sin este `@media not print` toda utilidad `dark:` (fondos slate-900, etc.)
+   se iría al papel en negro. Definir la variante acá lo resuelve de una vez para toda la app, en
+   vez de ir agregando `print:` a cada vista. Ver también el bloque `@media print` del final, que
+   hace lo mismo con los tokens de color propios de Nuxt UI. */
+@variant dark {
+   @media not print {
+      &:where(.dark, .dark *) {
+         @slot;
+      }
+   }
+}
+
+@theme static {
+   --color-usm-blue: #0055a5;
+   --color-usm-red: #c8102e;
+   --color-usm-green: #008452;
+   --color-usm-yellow: #f7ae00;
+   --color-usm-purple: #990099;
+   --color-usm-cyan: #0eadd8;
+   --color-usm-light: #e8f0f9;
+   --color-usm-gray: #6b7280;
+
+   --color-usm-text: #3b424c;
+   --color-usm-text-muted: #6b7280;
+   --color-usm-border: #99bee5;
+
+   /* COLORES NUXTUI */
+   /* Primary, Secondary, Success, Info, Warning, Error, Neutral */
+
+   --color-usm-blue-50: #e8f0f9;
+   --color-usm-blue-100: #c5d9f0;
+   --color-usm-blue-200: #99bee5;
+   --color-usm-blue-300: #66a0d6;
+   --color-usm-blue-400: #3382c7;
+   --color-usm-blue-500: #0055a5;
+   --color-usm-blue-600: #004589;
+   --color-usm-blue-700: #003568;
+   --color-usm-blue-800: #002548;
+   --color-usm-blue-900: #00142a;
+   --color-usm-blue-950: #000915;
+
+   --color-usm-green-50: #ecfff6;
+   --color-usm-green-100: #d3ffed;
+   --color-usm-green-200: #aaffdc;
+   --color-usm-green-300: #69ffc4;
+   --color-usm-green-400: #21ffa8;
+   --color-usm-green-500: #00f294;
+   --color-usm-green-600: #00ca7b;
+   --color-usm-green-700: #009e61;
+   --color-usm-green-800: #008452;
+   --color-usm-green-900: #026541;
+   --color-usm-green-950: #003925;
+
+   --color-usm-purple-50: #fdf1ff;
+   --color-usm-purple-100: #fae1ff;
+   --color-usm-purple-200: #f7c3ff;
+   --color-usm-purple-300: #f594ff;
+   --color-usm-purple-400: #f254ff;
+   --color-usm-purple-500: #ed16ff;
+   --color-usm-purple-600: #f100ff;
+   --color-usm-purple-700: #d200d9;
+   --color-usm-purple-800: #ad00b1;
+   --color-usm-purple-900: #990099;
+   --color-usm-purple-950: #630063;
+
+   --color-usm-cyan-50: #edfcfe;
+   --color-usm-cyan-100: #d1f5fc;
+   --color-usm-cyan-200: #a8ebf9;
+   --color-usm-cyan-300: #6cdbf4;
+   --color-usm-cyan-400: #29c1e7;
+   --color-usm-cyan-500: #0eadd8;
+   --color-usm-cyan-600: #0e83ac;
+   --color-usm-cyan-700: #13698b;
+   --color-usm-cyan-800: #185672;
+   --color-usm-cyan-900: #194860;
+   --color-usm-cyan-950: #0a2e42;
+
+   --color-usm-yellow-50: #fffce7;
+   --color-usm-yellow-100: #fff7c1;
+   --color-usm-yellow-200: #ffea86;
+   --color-usm-yellow-300: #ffd741;
+   --color-usm-yellow-400: #ffc20d;
+   --color-usm-yellow-500: #f7ae00;
+   --color-usm-yellow-600: #d18300;
+   --color-usm-yellow-700: #a65a02;
+   --color-usm-yellow-800: #89470a;
+   --color-usm-yellow-900: #743a0f;
+   --color-usm-yellow-950: #441c04;
+
+   --color-usm-red-50: #fff1f1;
+   --color-usm-red-100: #ffe4e4;
+   --color-usm-red-200: #ffccce;
+   --color-usm-red-300: #fea3a7;
+   --color-usm-red-400: #fd6f78;
+   --color-usm-red-500: #f73c4d;
+   --color-usm-red-600: #e41a36;
+   --color-usm-red-700: #c8102e;
+   --color-usm-red-800: #a1102c;
+   --color-usm-red-900: #8a112c;
+   --color-usm-red-950: #4d0413;
+
+   --color-usm-gray-50: #f9fafb;
+   --color-usm-gray-100: #f3f4f6;
+   --color-usm-gray-200: #e5e7eb;
+   --color-usm-gray-300: #d1d5db;
+   --color-usm-gray-400: #9ca3af;
+   --color-usm-gray-500: #6b7280;
+   --color-usm-gray-600: #4b5563;
+   --color-usm-gray-700: #374151;
+   --color-usm-gray-800: #1f2937;
+   --color-usm-gray-900: #111827;
+   --color-usm-gray-950: #030712;
+}
+
+/* ── Impresión siempre en claro ───────────────────────────────────────────
+   Nuxt UI declara sus tokens de superficie dos veces (node_modules/@nuxt/ui/dist/runtime/index.css):
+   en `.light, :root` con valores claros y en `.dark` con los oscuros. Como la clase `.dark`
+   sigue puesta al imprimir, todo lo que usa `bg-default`, `bg-muted`, `bg-elevated`,
+   `border-default` o `text-*` sale con fondo oscuro en el papel.
+
+   Acá se reponen los valores claros mientras se imprime. El bloque va SIN `@layer`: cualquier
+   regla sin capa le gana a las de `@layer theme`, que es donde Nuxt UI define las suyas, así que
+   no hace falta pelear por especificidad.
+
+   Junto con el `@variant dark` de más arriba (que desactiva las utilidades `dark:`), esto deja
+   la impresión en claro en toda la app sin tener que tocar cada página. */
+@media print {
+   :root,
+   .dark {
+      --ui-text-dimmed: var(--ui-color-neutral-400);
+      --ui-text-muted: var(--ui-color-neutral-500);
+      --ui-text-toned: var(--ui-color-neutral-600);
+      --ui-text: var(--ui-color-neutral-700);
+      --ui-text-highlighted: var(--ui-color-neutral-900);
+      --ui-text-inverted: #fff;
+      --ui-bg: #fff;
+      --ui-bg-muted: var(--ui-color-neutral-50);
+      --ui-bg-elevated: var(--ui-color-neutral-100);
+      --ui-bg-accented: var(--ui-color-neutral-200);
+      --ui-bg-inverted: var(--ui-color-neutral-900);
+      --ui-border: var(--ui-color-neutral-200);
+      --ui-border-muted: var(--ui-color-neutral-200);
+      --ui-border-accented: var(--ui-color-neutral-300);
+      --ui-border-inverted: var(--ui-color-neutral-900);
+   }
+
+   /* Sin esto el navegador "optimiza" los fondos al imprimir y los tonos suaves (cabeceras de
+       tabla, colores de cada reserva) se pierden. Tailwind no tiene utilidad para esta
+       propiedad, así que va como CSS crudo. */
+   * {
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+   }
+}
+
+@utility switch-light {
+   & button[role='switch']:not([data-state='checked']) {
+      background-color: var(--color-usm-gray-300);
+   }
+   & button[role='switch'] span {
+      background-color: white;
+   }
+}

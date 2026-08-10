@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 .output/
 .nuxt/
+.nitro/
 dist/
 
 # Prisma generated
@@ -16,7 +17,34 @@ generated/
 
 # Editor
 .vscode/settings.json
+.idea/
+*.swp
+*.swo
 
-# OS
+# Claude Code (config/estado local, no del proyecto)
+.claude/settings.local.json
+
+# macOS
 .DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+.fseventsd
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.directory
+.Trash-*
+
+# Logs
+*.log
+npm-debug.log*

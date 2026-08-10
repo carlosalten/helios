@@ -1,0 +1,489 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Personas y roles (login + agenda académica unificados)
+// ============================================================
+
+// Roles de acceso/clasificación de una persona. Tabla administrable desde /personas/tipos
+// (antes solo "tipos de persona"; ahora también controla el acceso vía el modelo Permiso,
+// que referencia `rol.nombre` como string). 'Administrador' tiene bypass hardcodeado en
+// requierePermiso y nunca necesita filas en `permiso`.
+model Rol {
+  id        Int       @id @default(autoincrement())
+  nombre    String    @db.VarChar(30)
+  // Rango del rol: mayor número = más alto en la jerarquía. Al crear/editar una persona o
+  // cambiarle el rol (/personas/gestion), solo se pueden asignar roles con jerarquía menor o
+  // igual a la del propio usuario — ver el chequeo en server/api/personas/index.post.ts y
+  // server/api/personas/[id]/rol.patch.ts. 'Administrador' tiene bypass total, igual que en
+  // requierePermiso, sin importar este valor.
+  jerarquia Int       @default(0)
+  personas  Persona[]
+
+  @@map("rol")
+}
+
+// Tipo de jornada laboral de un profesor (solo aplica al rol Profesor).
+enum JornadaLaboral {
+  COMPLETA
+  PARCIAL
+
+  @@map("jornada_laboral")
+}
+
+// Preferencia de theme de la interfaz (ver /cuenta/preferencias). Primer criterio de una
+// página pensada para ir sumando otros más adelante.
+enum TemaPreferido {
+  CLARO
+  OSCURO
+
+  @@map("tema_preferido")
+}
+
+model Persona {
+  id                 Int             @id @default(autoincrement())
+  email              String          @unique @db.VarChar(50)
+  // Nulo: la persona no tiene cuenta de acceso al sistema (solo agenda/reservas).
+  password           String?         @db.VarChar(60)
+  nombre             String          @db.VarChar(50)
+  apellido           String          @db.VarChar(50)
+  activo             Boolean         @default(true)
+  rolId              Int             @map("rol_id")
+  // Solo aplica a profesores; nulo para el resto de los roles.
+  jornadaLaboral     JornadaLaboral? @map("jornada_laboral")
+  // Preferencia de theme (claro/oscuro) de la persona. Se aplica al iniciar sesión y se puede
+  // cambiar en /cuenta/preferencias.
+  temaPreferido      TemaPreferido   @default(CLARO) @map("tema_preferido")
+  // Si /horario destaca los "topes" de un paralelo dictado en más de un curso (mismo paralelo
+  // espejo, no un choque real de sala/profesor — ver `topeEsEspejo` en horario/index.vue), y
+  // con qué color. Se cambia en /cuenta/preferencias.
+  mostrarTopesEspejo Boolean         @default(true) @map("mostrar_topes_espejo")
+  colorTopesEspejo   String          @default("#06B6D4") @map("color_topes_espejo") @db.VarChar(7)
+
+  rol Rol @relation(fields: [rolId], references: [id])
+
+  reservas             Reserva[]
+  sesionesComoProfesor SesionParalelo[]
+  carrerasComoJefe     Carrera[]
+  carrerasAsignadas    CarreraPersona[]
+  encargadoDeSalas     EncargadoSala[]
+
+  @@index([rolId])
+  @@map("persona")
+}
+
+// ============================================================
+// Jerarquía académica
+// ============================================================
+
+model Carrera {
+  codigo        Int     @id
+  nombre        String  @unique @db.VarChar(100)
+  // Nombre corto para mostrar en espacios reducidos.
+  nombreCorto   String  @map("nombre_corto") @db.VarChar(30)
+  jefePersonaId Int     @map("jefe_persona_id")
+  // Diurna o vespertina (mismo enum `Jornada` que usa Bloque.jornada).
+  jornada       Jornada @default(DIURNA)
+
+  jefe   Persona @relation(fields: [jefePersonaId], references: [id])
+  planes Plan[]
+
+  personasAsignadas CarreraPersona[]
+
+  @@index([jefePersonaId])
+  @@map("carrera")
+}
+
+// Personas (directores de departamento, profesores, apoyo docente, …) asignadas a una
+// o más carreras, más allá del jefe de carrera único (Carrera.jefePersonaId).
+model CarreraPersona {
+  id            Int @id @default(autoincrement())
+  personaId     Int @map("persona_id")
+  carreraCodigo Int @map("carrera_codigo")
+
+  persona Persona @relation(fields: [personaId], references: [id])
+  carrera Carrera @relation(fields: [carreraCodigo], references: [codigo])
+
+  @@unique([personaId, carreraCodigo])
+  @@index([carreraCodigo])
+  @@map("carrera_persona")
+}
+
+model Plan {
+  id                Int     @id @default(autoincrement())
+  numero            Int
+  vigente           Boolean @default(false)
+  carreraCodigo     Int     @map("carrera_codigo")
+  cantidadSemestres Int     @default(4) @map("cantidad_semestres")
+  // Habilita el cuadro de electivos en /planes/asignacion para este plan. Sin esto en true,
+  // el cuadro no se muestra aunque el plan ya tuviera asignaturas marcadas `esElectiva`.
+  tieneElectivos    Boolean @default(false) @map("tiene_electivos")
+
+  carrera         Carrera          @relation(fields: [carreraCodigo], references: [codigo])
+  asignaturasPlan AsignaturaPlan[]
+  cursos          Curso[]
+
+  @@index([carreraCodigo])
+  @@map("plan")
+}
+
+// Cohorte/generación de una carrera dentro de un plan (ej. "1er año", "2do año") en un
+// semestre específico. Los paralelos se agendan en el horario de un curso específico.
+model Curso {
+  id             Int    @id @default(autoincrement())
+  nombre         String @db.VarChar(50)
+  // Número de la cohorte (1er año, 2do año, …). Constraint `curso_numero_positivo` en BD.
+  numero         Int
+  // Posición curricular (1..12) dentro del plan — se compara contra AsignaturaPlan.semestre
+  // al crear un paralelo. Constraint `curso_numero_semestre_rango` en BD. Distinto de
+  // `semestreId`, que apunta al semestre académico real (calendario).
+  numeroSemestre Int    @map("numero_semestre")
+  planId         Int    @map("plan_id")
+  semestreId     Int    @map("semestre_id")
+
+  plan      Plan       @relation(fields: [planId], references: [id])
+  semestre  Semestre   @relation(fields: [semestreId], references: [id])
+  paralelos Paralelo[]
+
+  @@unique([planId, semestreId, nombre])
+  @@index([planId])
+  @@index([semestreId])
+  @@map("curso")
+}
+
+model Asignatura {
+  id              Int    @id @default(autoincrement())
+  codigo          String @unique @db.VarChar(20)
+  nombre          String @db.VarChar(100)
+  bloquesTeoria   Int    @map("bloques_teoria")
+  bloquesPractica Int    @map("bloques_practica")
+
+  asignaturasPlan AsignaturaPlan[]
+  // Las dos puntas de la misma relación simétrica (ver AsignaturaEquivalencia): para saber
+  // con qué asignaturas es equivalente esta, basta con `equivalencias` — la fila inversa
+  // siempre existe.
+  equivalencias   AsignaturaEquivalencia[] @relation("equivalenciaOrigen")
+  equivalenteDe   AsignaturaEquivalencia[] @relation("equivalenciaDestino")
+
+  @@map("asignatura")
+}
+
+// Equivalencia entre dos asignaturas: distintos códigos que se dictan como la misma
+// asignatura (ej. HCW100_T en el plan y HCW100 en la programación de un semestre). Se usa en
+// la carga masiva para aceptar paralelos de un código que no está en el plan pero sí lo está
+// su equivalente.
+//
+// La relación es **simétrica y se guarda en las dos direcciones**: dar de alta A↔B inserta
+// (A,B) y (B,A). Así cualquier consulta se resuelve mirando solo `equivalencias`, sin tener
+// que unir también la punta inversa. Los endpoints (`/api/asignaturas/equivalencias/toggle`)
+// son los responsables de mantener el par completo.
+//
+// No es transitiva: si A↔B y B↔C, A y C no quedan equivalentes salvo que se indique explícito.
+model AsignaturaEquivalencia {
+  asignaturaId  Int @map("asignatura_id")
+  equivalenteId Int @map("equivalente_id")
+
+  asignatura  Asignatura @relation("equivalenciaOrigen", fields: [asignaturaId], references: [id], onDelete: Cascade)
+  equivalente Asignatura @relation("equivalenciaDestino", fields: [equivalenteId], references: [id], onDelete: Cascade)
+
+  @@id([asignaturaId, equivalenteId])
+  @@index([equivalenteId])
+  @@map("asignatura_equivalencia")
+}
+
+model AsignaturaPlan {
+  id           Int     @id @default(autoincrement())
+  asignaturaId Int     @map("asignatura_id")
+  planId       Int     @map("plan_id")
+  semestre     Int
+  // Posición dentro de la columna (planId, semestre) en el tablero de asignación;
+  // ordenable a mano (drag and drop) en /planes/asignacion.
+  orden        Int     @default(0)
+  // Asignatura electiva dentro de este plan: en vez de vivir en la columna de su `semestre`,
+  // se ubica en el cuadro de Electivos de /planes/asignacion, y en /paralelos/asignacion se
+  // puede crear su paralelo en un curso de cualquier semestre (sin la advertencia de "el
+  // semestre no coincide"). `semestre` se conserva igual (>=1, exigido por la BD) pero deja
+  // de usarse para agrupar la asignatura en una columna del tablero.
+  esElectiva   Boolean @default(false) @map("es_electiva")
+  // Omite las advertencias de topes de horario (choque de sala o de profesor) en las
+  // sesiones de esta asignatura, para este plan — ver /configuracion. Es por (asignatura,
+  // plan): la misma asignatura puede estar exenta en un plan y no en otro.
+  exentaTope   Boolean @default(false) @map("exenta_tope")
+
+  asignatura Asignatura @relation(fields: [asignaturaId], references: [id])
+  plan       Plan       @relation(fields: [planId], references: [id])
+  paralelos  Paralelo[]
+
+  @@unique([asignaturaId, planId])
+  @@index([planId])
+  @@map("asignatura_plan")
+}
+
+model Paralelo {
+  id               Int     @id @default(autoincrement())
+  codigo           String  @db.VarChar(10)
+  // Cupo de estudiantes del paralelo. Constraint `paralelo_cupo_rango` en BD (0 a 100).
+  cupo             Int     @default(0)
+  // Posición dentro de su curso (cursoId) en el tablero de /paralelos/asignacion;
+  // ordenable a mano (drag and drop).
+  orden            Int     @default(0)
+  // Color (hex, ej. "#3B82F6") de los bloques de este paralelo en la matriz de horario.
+  // Nulo: usa el color por defecto según el tipo de sesión (teoría/práctica).
+  color            String? @db.VarChar(7)
+  asignaturaPlanId Int     @map("asignatura_plan_id")
+  cursoId          Int     @map("curso_id")
+
+  asignaturaPlan AsignaturaPlan   @relation(fields: [asignaturaPlanId], references: [id])
+  curso          Curso            @relation(fields: [cursoId], references: [id])
+  sesiones       SesionParalelo[]
+
+  @@index([asignaturaPlanId])
+  @@index([cursoId])
+  @@map("paralelo")
+}
+
+// ============================================================
+// Temporal (semestre y bloques versionados)
+// ============================================================
+
+model Semestre {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @db.VarChar(20)
+  fechaInicio DateTime @map("fecha_inicio") @db.Date
+  fechaFin    DateTime @map("fecha_fin") @db.Date
+  vigente     Boolean  @default(false)
+
+  cursos   Curso[]
+  bloques  Bloque[]
+  feriados Feriado[]
+
+  @@map("semestre")
+}
+
+// Qué se suspende en un feriado: solo las clases (permite reuniones y otras actividades)
+// o todo (clases y actividades por igual).
+enum AlcanceFeriado {
+  SOLO_CLASES
+  TOTAL
+
+  @@map("alcance_feriado")
+}
+
+// Feriado (día completo o solo un rango horario) dentro de un semestre. Constraint
+// `feriado_horas_validas` en BD (ver CLAUDE.md raíz): hora_inicio y hora_termino van
+// ambos null (día completo) o ambos con valor y hora_termino > hora_inicio.
+model Feriado {
+  id          Int            @id @default(autoincrement())
+  fecha       DateTime       @db.Date
+  horaInicio  DateTime?      @map("hora_inicio") @db.Time
+  horaTermino DateTime?      @map("hora_termino") @db.Time
+  alcance     AlcanceFeriado @default(TOTAL)
+  semestreId  Int            @map("semestre_id")
+
+  semestre Semestre @relation(fields: [semestreId], references: [id])
+
+  // Un mismo semestre no puede tener dos feriados en la misma fecha.
+  @@unique([semestreId, fecha])
+  @@index([semestreId])
+  @@map("feriado")
+}
+
+enum Jornada {
+  DIURNA
+  VESPERTINA
+
+  @@map("jornada")
+}
+
+model Bloque {
+  id             Int      @id @default(autoincrement())
+  semestreId     Int      @map("semestre_id")
+  numero         Int
+  inicio         DateTime @db.Time
+  fin            DateTime @db.Time
+  jornada        Jornada  @default(DIURNA)
+  // Marca el último bloque de la mañana (separa mañana/tarde en la matriz de horario).
+  // Invariante `bloque_un_ultimo_manana_por_semestre` en BD: a lo más un bloque en true
+  // por semestre (índice único parcial, no representable en Prisma).
+  esUltimoManana Boolean  @default(false) @map("es_ultimo_manana")
+
+  semestre       Semestre               @relation(fields: [semestreId], references: [id])
+  sesionesBloque SesionParaleloBloque[]
+  protecciones   BloqueProtegido[]
+
+  @@unique([semestreId, numero])
+  @@index([semestreId])
+  @@map("bloque")
+}
+
+// Un bloque queda "protegido" (sin poder agendar clases de paralelos) en un día
+// específico si existe una fila aquí. Ej: bloques 7 y 8 protegidos martes y jueves.
+// diaSemana usa numeración ISO: 1 = Lunes … 7 = Domingo.
+model BloqueProtegido {
+  bloqueId  Int @map("bloque_id")
+  diaSemana Int @map("dia_semana") @db.SmallInt
+
+  bloque Bloque @relation(fields: [bloqueId], references: [id], onDelete: Cascade)
+
+  @@id([bloqueId, diaSemana])
+  @@map("bloque_protegido")
+}
+
+// ============================================================
+// Sesiones (plantilla horaria del paralelo)
+// ============================================================
+
+enum TipoSesion {
+  TEORIA
+  PRACTICA
+
+  @@map("tipo_sesion")
+}
+
+model SesionParalelo {
+  id         Int        @id @default(autoincrement())
+  paraleloId Int        @map("paralelo_id")
+  diaSemana  Int        @map("dia_semana") @db.SmallInt
+  tipo       TipoSesion
+  salaCodigo String?    @map("sala_codigo") @db.VarChar(20)
+  profesorId Int?       @map("profesor_id")
+
+  paralelo Paralelo @relation(fields: [paraleloId], references: [id])
+  sala     Sala?    @relation(fields: [salaCodigo], references: [codigo])
+  profesor Persona? @relation(fields: [profesorId], references: [id])
+
+  bloques  SesionParaleloBloque[]
+  reservas Reserva[]
+
+  @@index([paraleloId])
+  @@index([salaCodigo])
+  @@index([profesorId])
+  @@map("sesion_paralelo")
+}
+
+model SesionParaleloBloque {
+  sesionParaleloId Int @map("sesion_paralelo_id")
+  bloqueId         Int @map("bloque_id")
+
+  sesionParalelo SesionParalelo @relation(fields: [sesionParaleloId], references: [id], onDelete: Cascade)
+  bloque         Bloque         @relation(fields: [bloqueId], references: [id])
+
+  @@id([sesionParaleloId, bloqueId])
+  @@index([bloqueId])
+  @@map("sesion_paralelo_bloque")
+}
+
+// ============================================================
+// Salas
+// ============================================================
+
+model TipoSala {
+  id     Int    @id @default(autoincrement())
+  nombre String @db.VarChar(50)
+  salas  Sala[]
+
+  @@map("tipo_sala")
+}
+
+model Sala {
+  codigo     String @id @db.VarChar(20)
+  capacidad  Int
+  tipoSalaId Int    @map("tipo_sala_id")
+
+  tipoSala   TipoSala         @relation(fields: [tipoSalaId], references: [id])
+  encargados EncargadoSala[]
+  sesiones   SesionParalelo[]
+  reservas   Reserva[]
+
+  @@index([tipoSalaId])
+  @@map("sala")
+}
+
+model EncargadoSala {
+  id         Int    @id @default(autoincrement())
+  personaId  Int    @map("persona_id")
+  salaCodigo String @map("sala_codigo") @db.VarChar(20)
+
+  persona Persona @relation(fields: [personaId], references: [id])
+  sala    Sala    @relation(fields: [salaCodigo], references: [codigo])
+
+  @@unique([personaId, salaCodigo])
+  @@index([salaCodigo])
+  @@map("encargado_sala")
+}
+
+// ============================================================
+// Reservas
+// ============================================================
+
+model TipoReserva {
+  id       Int       @id @default(autoincrement())
+  nombre   String    @db.VarChar(30)
+  // Hex de una paleta fija de 20 colores con nombre (ver COLORES_RESERVA en
+  // app/types/reserva.ts): cada reserva de este tipo toma este color en /reservas/horario.
+  color    String    @db.VarChar(7)
+  reservas Reserva[]
+
+  @@map("tipo_reserva")
+}
+
+model Reserva {
+  id               Int      @id @default(autoincrement())
+  salaCodigo       String   @map("sala_codigo") @db.VarChar(20)
+  titulo           String   @db.VarChar(50)
+  fecha            DateTime @db.Date
+  inicio           DateTime @db.Time
+  fin              DateTime @db.Time
+  // Nulo: reserva sin responsable designado. Pasa con las reservas generadas por una sesión
+  // de clases a la que todavía no se le asigna profesor (la sala ya queda tomada igual);
+  // al asignarlo, la serie se regenera con el profesor como responsable.
+  personaId        Int?     @map("persona_id")
+  tipoReservaId    Int      @map("tipo_reserva_id")
+  sesionParaleloId Int?     @map("sesion_paralelo_id")
+  // Comparte un mismo serieId todas las ocurrencias generadas por una reserva recurrente
+  // (semanal); null en una reserva no recurrente. No hay un campo booleano "recurrente"
+  // aparte: la recurrencia se sabe por si serieId es null o no.
+  serieId          String?  @map("serie_id") @db.Uuid
+  // Si la reserva aparece en la vista impresa de /reservas/horario. Por defecto sí — se marca
+  // en false para reservas que se quieren ver en pantalla pero no en el reporte en papel (p.
+  // ej. bloqueos internos de mantenimiento).
+  imprimir         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  sala           Sala            @relation(fields: [salaCodigo], references: [codigo])
+  persona        Persona?        @relation(fields: [personaId], references: [id])
+  tipoReserva    TipoReserva     @relation(fields: [tipoReservaId], references: [id])
+  sesionParalelo SesionParalelo? @relation(fields: [sesionParaleloId], references: [id])
+
+  @@index([salaCodigo, fecha])
+  @@index([personaId])
+  @@index([sesionParaleloId])
+  @@index([fecha])
+  @@index([serieId])
+  @@map("reserva")
+}
+
+// ============================================================
+// Permisos
+// ============================================================
+
+// Controla qué rol puede ejecutar qué acción sobre qué ruta.
+// 'Administrador' nunca tiene filas aquí: tiene bypass hardcodeado en requierePermiso
+// para que nunca pueda quedar bloqueado por un seed o borrado accidental.
+model Permiso {
+  id     Int    @id @default(autoincrement())
+  rol    String @db.VarChar(30)
+  ruta   String @db.VarChar(50)
+  accion String @db.VarChar(10) // 'ver' | 'crear' | 'editar' | 'borrar' | 'contrasena' | 'cambiarrol' | 'activar'
+
+  @@unique([rol, ruta, accion], name: "rol_ruta_accion")
+  @@index([rol])
+  @@map("permiso")
+}
