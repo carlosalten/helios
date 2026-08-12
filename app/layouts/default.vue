@@ -7,6 +7,14 @@ const colorMode = useColorMode()
 const sidebarOpen = ref(false)
 const collapsed = ref(false)
 
+// Estado de carga de la navegación (el mismo que alimenta la barra de progreso de `app.vue`):
+// las páginas hacen `await useFetch(...)` en su `<script setup>`, así que Nuxt suspende la
+// navegación y deja la página anterior en pantalla mientras llegan los datos. Además de la
+// barra superior, el área de contenido se atenúa y muestra un spinner para que ese lapso se
+// lea como "cargando" y no como un click perdido. `useLoadingIndicator` ya viene con throttle,
+// así que una navegación instantánea no alcanza a mostrar nada.
+const { isLoading: navegando } = useLoadingIndicator()
+
 const isDark = computed(() => colorMode.value === 'dark')
 function toggleTheme() {
    colorMode.preference = isDark.value ? 'light' : 'dark'
@@ -65,6 +73,7 @@ const gruposNav: NavItem[][] = [
             { to: '/salas/tipos', label: 'Tipos de sala' },
             { to: '/salas/gestion', label: 'Gestión de salas' },
             { to: '/salas/asignacion', label: 'Asignación' },
+            { to: '/salas/pantallas', label: 'Pantallas Público' },
          ],
       },
    ],
@@ -115,6 +124,7 @@ const gruposNav: NavItem[][] = [
          label: 'Reservas',
          children: [
             { to: '/reservas/horario', label: 'Horario de salas' },
+            { to: '/reservas/imprimir', label: 'Imprimir horarios' },
             { to: '/reservas/resumen', label: 'Resumen de reservas' },
             { to: '/reservas/tipos', label: 'Tipos de reserva' },
          ],
@@ -191,9 +201,11 @@ const pageTitles: Record<string, string> = {
    '/salas/tipos': 'Tipos de sala',
    '/salas/gestion': 'Gestión de salas',
    '/salas/asignacion': 'Asignación de salas',
+   '/salas/pantallas': 'Pantallas Público',
    '/personas/tipos': 'Tipos de persona',
    '/personas/gestion': 'Gestión de personas',
    '/reservas/horario': 'Horario de salas',
+   '/reservas/imprimir': 'Imprimir horarios',
    '/reservas/resumen': 'Resumen de reservas',
    '/reservas/tipos': 'Tipos de reserva',
    // No están en `navItems` (`/cuenta/contrasena` se llega por el botón del pie; `/cuenta/preferencias`
@@ -455,8 +467,33 @@ const navItemsPreferencias = computed<NavigationMenuItem[][]>(() => [
          </header>
 
          <!-- Page -->
-         <main class="flex-1 p-4 sm:p-6 lg:p-8">
+         <main class="relative flex-1 p-4 sm:p-6 lg:p-8">
             <slot />
+
+            <!-- Velo de carga mientras se resuelve la navegación a otra página. Va sobre el
+                 contenido (que sigue siendo el de la página anterior hasta que Nuxt la
+                 reemplaza) para que se lea como "esto se está actualizando". El badge es
+                 `sticky` para seguir visible aunque la página sea larga y esté scrolleada. -->
+            <Transition name="overlay">
+               <div
+                  v-if="navegando"
+                  class="print:hidden absolute inset-0 z-10 bg-usm-light/70 dark:bg-slate-950/70"
+                  role="status"
+                  aria-live="polite"
+               >
+                  <div class="sticky top-24 flex justify-center">
+                     <span
+                        class="inline-flex items-center gap-2 rounded-full border border-default bg-default px-4 py-2 text-sm font-medium text-usm-text shadow-lg dark:text-white"
+                     >
+                        <UIcon
+                           name="i-lucide-loader-circle"
+                           class="size-4 animate-spin text-usm-blue dark:text-usm-cyan"
+                        />
+                        Cargando…
+                     </span>
+                  </div>
+               </div>
+            </Transition>
          </main>
 
          <footer class="print:hidden shrink-0 border-t border-gray-200 dark:border-slate-800 px-4 py-3 sm:px-6">

@@ -27,10 +27,12 @@ export const RUTAS_PERMISO = [
    '/reportes/asignaturas-plan',
    '/reportes/uso-salas',
    '/reservas/horario',
+   '/reservas/imprimir',
    '/reservas/resumen',
    '/reservas/tipos',
    '/salas/asignacion',
    '/salas/gestion',
+   '/salas/pantallas',
    '/salas/tipos',
    '/semestres',
 ] as const

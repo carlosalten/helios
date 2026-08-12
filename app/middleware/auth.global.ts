@@ -16,13 +16,18 @@ export default defineNuxtRouteMiddleware((to) => {
    const { loggedIn, user } = useUserSession()
 
    const rutasPublicas = ['/login']
+   // Pantalla física en un hall/pasillo: nadie inicia sesión ahí. `/pantallas/<codigo>` no es
+   // una lista fija (el código lo define quien crea la pantalla en /salas/pantallas), así que
+   // se compara por prefijo — ver server/api/pantallas/publico/[codigo].get.ts, que tampoco
+   // exige sesión.
+   const esPantallaPublica = to.path.startsWith('/pantallas/')
 
    if (!loggedIn.value) {
-      if (!rutasPublicas.includes(to.path)) return navigateTo('/login')
+      if (!rutasPublicas.includes(to.path) && !esPantallaPublica) return navigateTo('/login')
       return
    }
 
-   if (rutasPublicas.includes(to.path) || RUTAS_SIN_RESTRICCION.includes(to.path)) return
+   if (rutasPublicas.includes(to.path) || esPantallaPublica || RUTAS_SIN_RESTRICCION.includes(to.path)) return
    if (user.value?.rol === 'Administrador') return
 
    const tienePermiso = user.value?.permisos.some((p) => p.ruta === to.path && p.acciones.includes('ver'))

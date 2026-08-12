@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { Curso } from '~/types/curso'
+import type { Curso, TopeOtroParalelo } from '~/types/curso'
 import type { Plan } from '~/types/plan'
 import type { Semestre } from '~/types/semestre'
 import { nombreCortoDia } from '~/types/dia'
@@ -152,6 +152,146 @@ watch(cursos, () => {
    hayCambios.value = false
    autoresCambios.value = []
 })
+
+/* ── Topes del curso seleccionado, separados por plan ─────────────────────
+   Los topes son por sala o profesor, recursos compartidos por todo el departamento, así que
+   un curso puede toparse tanto con paralelos de su propio plan como con los de otro. Se
+   listan en dos cuadros porque se resuelven distinto: los del mismo plan se arreglan moviendo
+   horas puertas adentro; los de otro plan hay que coordinarlos con la otra carrera.
+
+   La separación va por cada "otro" y no por el tope completo: una misma sesión puede chocar a
+   la vez con un paralelo propio y con uno ajeno, y en ese caso el tope aparece en ambos
+   cuadros, cada uno mostrando solo los otros que le corresponden.
+
+   El backend entrega un tope por cada (bloque × recurso), así que una misma clase chocando en
+   dos bloques por sala y profesor llega como cuatro topes. Acá se consolidan en un solo aviso:
+   primero se juntan los recursos que chocan en el mismo bloque contra el mismo paralelo, y
+   después se fusionan los bloques consecutivos que repiten ese mismo conjunto de recursos. Es
+   un solo choque real y así se lee como tal, con su rango de bloques y de horas.
+
+   Si entremedio cambia la sala o el profesor, el conjunto de recursos deja de coincidir y se
+   corta en otro aviso: son cosas distintas de arreglar y fundirlas escondería el dato. */
+interface TopeListado {
+   clave: string
+   asignaturaCodigo: string
+   paraleloCodigo: string
+   diaSemana: number
+   bloqueDesde: number
+   bloqueHasta: number
+   horaInicio: string
+   horaFin: string
+   recursos: { tipo: 'sala' | 'profesor'; nombre: string }[]
+   otros: TopeOtroParalelo[]
+}
+
+// Identifica al conjunto de paralelos del otro extremo: dos topes solo se consolidan si chocan
+// exactamente con los mismos.
+function claveDeOtros(otros: TopeOtroParalelo[]) {
+   return otros
+      .map((o) => `${o.asignaturaCodigo}·${o.paraleloCodigo}·${o.cursoNombre}·${o.planId}`)
+      .sort()
+      .join('|')
+}
+
+function topesDelCurso(curso: Curso, mismoPlan: boolean): TopeListado[] {
+   interface BloqueConTope {
+      bloqueNumero: number
+      bloqueInicio: string
+      bloqueFin: string
+      recursos: Map<string, { tipo: 'sala' | 'profesor'; nombre: string }>
+   }
+   // Serie = un paralelo propio chocando con un mismo conjunto de paralelos, un mismo día.
+   interface Serie {
+      asignaturaCodigo: string
+      paraleloCodigo: string
+      diaSemana: number
+      otros: TopeOtroParalelo[]
+      bloques: Map<number, BloqueConTope>
+   }
+
+   const series = new Map<string, Serie>()
+   for (const paralelo of curso.paralelos) {
+      for (const tope of paralelo.topes) {
+         const otros = tope.otros.filter((o) => (o.planId === curso.planId) === mismoPlan)
+         if (!otros.length) continue
+
+         const claveSerie = `${paralelo.id}|${tope.diaSemana}|${claveDeOtros(otros)}`
+         const serie = series.get(claveSerie) ?? {
+            asignaturaCodigo: paralelo.asignaturaCodigo,
+            paraleloCodigo: paralelo.codigo,
+            diaSemana: tope.diaSemana,
+            otros,
+            bloques: new Map<number, BloqueConTope>(),
+         }
+         const bloque = serie.bloques.get(tope.bloqueNumero) ?? {
+            bloqueNumero: tope.bloqueNumero,
+            bloqueInicio: tope.bloqueInicio,
+            bloqueFin: tope.bloqueFin,
+            recursos: new Map(),
+         }
+         // Sala y profesor del mismo bloque quedan en el mismo aviso, no en uno cada uno.
+         bloque.recursos.set(`${tope.tipo}-${tope.recurso}`, { tipo: tope.tipo, nombre: tope.recurso })
+         serie.bloques.set(tope.bloqueNumero, bloque)
+         series.set(claveSerie, serie)
+      }
+   }
+
+   const listado: TopeListado[] = []
+   for (const [claveSerie, serie] of series) {
+      const bloques = [...serie.bloques.values()].sort((a, b) => a.bloqueNumero - b.bloqueNumero)
+      let actual: TopeListado | null = null
+      let recursosActual = ''
+      for (const bloque of bloques) {
+         const claveRecursos = [...bloque.recursos.keys()].sort().join('|')
+         // Consecutivo por número de bloque, no por hora: entre dos bloques seguidos puede
+         // haber un recreo y sigue siendo el mismo choque.
+         if (actual && actual.bloqueHasta + 1 === bloque.bloqueNumero && recursosActual === claveRecursos) {
+            actual.bloqueHasta = bloque.bloqueNumero
+            actual.horaFin = bloque.bloqueFin
+            continue
+         }
+         actual = {
+            clave: `${claveSerie}|${bloque.bloqueNumero}`,
+            asignaturaCodigo: serie.asignaturaCodigo,
+            paraleloCodigo: serie.paraleloCodigo,
+            diaSemana: serie.diaSemana,
+            bloqueDesde: bloque.bloqueNumero,
+            bloqueHasta: bloque.bloqueNumero,
+            horaInicio: bloque.bloqueInicio,
+            horaFin: bloque.bloqueFin,
+            // Sala primero y profesor después, siempre en el mismo orden (no alfabético).
+            recursos: [...bloque.recursos.values()].sort((a, b) =>
+               a.tipo === b.tipo ? 0 : a.tipo === 'sala' ? -1 : 1
+            ),
+            otros: serie.otros,
+         }
+         recursosActual = claveRecursos
+         listado.push(actual)
+      }
+   }
+
+   // Por día y bloque: se lee como la agenda de la semana, que es como se revisan los topes.
+   return listado.sort(
+      (a, b) =>
+         a.diaSemana - b.diaSemana ||
+         a.bloqueDesde - b.bloqueDesde ||
+         a.asignaturaCodigo.localeCompare(b.asignaturaCodigo)
+   )
+}
+
+// "Bloque N° 3" o "Bloques N° 3–6" según cuántos cubra el aviso ya consolidado.
+function etiquetaBloques(tope: TopeListado) {
+   return tope.bloqueDesde === tope.bloqueHasta
+      ? `Bloque N° ${tope.bloqueDesde}`
+      : `Bloques N° ${tope.bloqueDesde}–${tope.bloqueHasta}`
+}
+
+function etiquetaRecursos(tope: TopeListado) {
+   return tope.recursos.map((r) => `${r.tipo === 'sala' ? 'Sala' : 'Profesor'} ${r.nombre}`).join(' · ')
+}
+
+const topesMismoPlan = computed(() => (cursoSeleccionado.value ? topesDelCurso(cursoSeleccionado.value, true) : []))
+const topesOtrosPlanes = computed(() => (cursoSeleccionado.value ? topesDelCurso(cursoSeleccionado.value, false) : []))
 
 const columnas: TableColumn<Curso>[] = [
    { accessorKey: 'nombre', header: 'Nombre' },
@@ -464,32 +604,87 @@ async function confirmarEliminar() {
                            <UBadge variant="subtle" color="neutral">
                               Práctica {{ paralelo.bloquesPracticaAsignados }}/{{ paralelo.bloquesPracticaRequeridos }}
                            </UBadge>
+                           <!-- El detalle de cada tope va en los dos cuadros de abajo, separado
+                                según si topa dentro del plan o con otro. -->
                            <UBadge v-if="paralelo.topes.length" variant="subtle" color="error">
                               {{ paralelo.topes.length }} tope{{ paralelo.topes.length !== 1 ? 's' : '' }}
                            </UBadge>
                         </div>
+                     </div>
+                  </div>
+               </div>
 
-                        <div v-if="paralelo.topes.length" class="mt-2 space-y-1.5">
-                           <div
-                              v-for="(tope, i) in paralelo.topes"
-                              :key="`${paralelo.id}-${tope.diaSemana}-${tope.bloqueId}-${tope.tipo}-${i}`"
-                              class="rounded-md border border-error/40 bg-error/5 p-1.5"
-                           >
-                              <p class="font-medium text-usm-text dark:text-white">
-                                 {{ nombreCortoDia(tope.diaSemana) }} · Bloque N° {{ tope.bloqueNumero }} ({{
-                                    formatHora(tope.bloqueInicio)
-                                 }}–{{ formatHora(tope.bloqueFin) }}) · {{ tope.tipo === 'sala' ? 'Sala' : 'Profesor' }}
-                                 {{ tope.recurso }}
-                              </p>
-                              <p
-                                 v-for="(otro, j) in tope.otros"
-                                 :key="j"
-                                 class="text-usm-text-muted dark:text-slate-400"
-                              >
-                                 Topa con {{ otro.asignaturaCodigo }} · Paralelo {{ otro.paraleloCodigo }} ·
-                                 {{ otro.cursoNombre }}
-                              </p>
-                           </div>
+               <!-- Topes dentro del mismo plan: se resuelven moviendo horas puertas adentro. -->
+               <div v-if="topesMismoPlan.length" class="rounded-2xl border border-default bg-default p-4">
+                  <div class="mb-1 flex items-center gap-2">
+                     <UIcon name="i-lucide-triangle-alert" class="size-4 shrink-0 text-error" />
+                     <h4 class="text-sm font-semibold text-usm-text dark:text-white">Topes dentro del plan</h4>
+                     <UBadge variant="subtle" color="error" class="ms-auto shrink-0">
+                        {{ topesMismoPlan.length }}
+                     </UBadge>
+                  </div>
+                  <p class="mb-3 text-xs text-usm-text-muted dark:text-slate-400">
+                     Chocan con paralelos de este mismo plan de estudios.
+                  </p>
+                  <div class="space-y-1.5">
+                     <div
+                        v-for="tope in topesMismoPlan"
+                        :key="tope.clave"
+                        class="rounded-md border border-error/40 bg-error/5 p-1.5 text-xs"
+                     >
+                        <p class="font-medium text-usm-text dark:text-white">
+                           {{ tope.asignaturaCodigo }} · Paralelo {{ tope.paraleloCodigo }}
+                        </p>
+                        <p class="text-usm-text-muted dark:text-slate-400">
+                           {{ nombreCortoDia(tope.diaSemana) }} · {{ etiquetaBloques(tope) }} ({{
+                              formatHora(tope.horaInicio)
+                           }}–{{ formatHora(tope.horaFin) }})
+                        </p>
+                        <p class="text-usm-text-muted dark:text-slate-400">{{ etiquetaRecursos(tope) }}</p>
+                        <p v-for="(otro, j) in tope.otros" :key="j" class="text-usm-text-muted dark:text-slate-400">
+                           Topa con {{ otro.asignaturaCodigo }} · Paralelo {{ otro.paraleloCodigo }} ·
+                           {{ otro.cursoNombre }}
+                        </p>
+                     </div>
+                  </div>
+               </div>
+
+               <!-- Topes con otros planes: hay que coordinarlos con la otra carrera, por eso se
+                    indica de qué carrera y plan es cada paralelo con el que se choca. -->
+               <div v-if="topesOtrosPlanes.length" class="rounded-2xl border border-default bg-default p-4">
+                  <div class="mb-1 flex items-center gap-2">
+                     <UIcon name="i-lucide-git-compare-arrows" class="size-4 shrink-0 text-error" />
+                     <h4 class="text-sm font-semibold text-usm-text dark:text-white">Topes con otros planes</h4>
+                     <UBadge variant="subtle" color="error" class="ms-auto shrink-0">
+                        {{ topesOtrosPlanes.length }}
+                     </UBadge>
+                  </div>
+                  <p class="mb-3 text-xs text-usm-text-muted dark:text-slate-400">
+                     Chocan con paralelos de otro plan de estudios: requieren coordinar con la otra carrera.
+                  </p>
+                  <div class="space-y-1.5">
+                     <div
+                        v-for="tope in topesOtrosPlanes"
+                        :key="tope.clave"
+                        class="rounded-md border border-error/40 bg-error/5 p-1.5 text-xs"
+                     >
+                        <p class="font-medium text-usm-text dark:text-white">
+                           {{ tope.asignaturaCodigo }} · Paralelo {{ tope.paraleloCodigo }}
+                        </p>
+                        <p class="text-usm-text-muted dark:text-slate-400">
+                           {{ nombreCortoDia(tope.diaSemana) }} · {{ etiquetaBloques(tope) }} ({{
+                              formatHora(tope.horaInicio)
+                           }}–{{ formatHora(tope.horaFin) }})
+                        </p>
+                        <p class="text-usm-text-muted dark:text-slate-400">{{ etiquetaRecursos(tope) }}</p>
+                        <div v-for="(otro, j) in tope.otros" :key="j" class="mt-1">
+                           <p class="text-usm-text-muted dark:text-slate-400">
+                              Topa con {{ otro.asignaturaCodigo }} · Paralelo {{ otro.paraleloCodigo }} ·
+                              {{ otro.cursoNombre }}
+                           </p>
+                           <p class="font-medium text-usm-text dark:text-slate-200">
+                              {{ otro.carreraNombreCorto }} · Plan N° {{ otro.planNumero }}
+                           </p>
                         </div>
                      </div>
                   </div>

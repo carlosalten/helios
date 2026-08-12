@@ -6,7 +6,20 @@ export interface ParaleloTope {
    bloqueFin: string
    tipo: 'sala' | 'profesor'
    recurso: string
-   otros: { asignaturaNombre: string; asignaturaCodigo: string; paraleloCodigo: string; cursoNombre: string }[]
+   otros: TopeOtroParalelo[]
+}
+
+// El otro extremo de un tope. `planId` es el del curso al que pertenece ese paralelo: si no
+// coincide con el del curso mirado, el tope cruza a otro plan (y probablemente a otra carrera),
+// así que en /cursos se lista aparte — resolverlo requiere coordinar con la otra carrera.
+export interface TopeOtroParalelo {
+   asignaturaNombre: string
+   asignaturaCodigo: string
+   paraleloCodigo: string
+   cursoNombre: string
+   planId: number
+   planNumero: number
+   carreraNombreCorto: string
 }
 
 export interface ParaleloDeCurso {

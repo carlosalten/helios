@@ -609,13 +609,19 @@ export default defineEventHandler(async (event) => {
    /* ── Mi agenda de hoy ──────────────────────────────────────────────────
       Las clases con sala ya tienen su fila `Reserva` (ver server/utils/reservasSesion.ts), así
       que la base son las reservas del usuario y se agregan aparte solo las clases SIN sala,
-      que no generan reserva. Mismo criterio que /api/horario/profesor. */
-   const miAgenda: ResumenAgenda[] = []
+      que no generan reserva. Mismo criterio que /api/horario/profesor.
+      Cada bloque de una clase (una hora) es una `SesionParalelo`/`Reserva` distinta (ver
+      server/utils/reservasSesion.ts), así que un paralelo de varias horas en el mismo día y
+      sala llega acá partido en varias entradas. Se fusionan en una sola por paralelo+sala,
+      aunque entre bloques haya un hueco (recreo): a diferencia de `contarEventosSala` (que solo
+      junta tramos contiguos para contar "clases" como unidad pedagógica), acá el criterio es
+      puramente de agenda personal — es la misma clase física en la misma sala el mismo día. */
+   const agendaBruta: (ResumenAgenda & { claveGrupo: string | null })[] = []
    if (alcance.personaId) {
       for (const reserva of reservasHoy) {
          if (reserva.personaId !== alcance.personaId) continue
          const paralelo = reserva.sesionParalelo?.paralelo
-         miAgenda.push({
+         agendaBruta.push({
             inicio: aHora(reserva.inicio),
             fin: aHora(reserva.fin),
             titulo: paralelo?.asignaturaPlan.asignatura.nombre ?? reserva.titulo,
@@ -623,6 +629,11 @@ export default defineEventHandler(async (event) => {
             salaCodigo: reserva.salaCodigo,
             color: paralelo?.color ?? reserva.tipoReserva.color,
             esClase: !!paralelo,
+            // Las reservas sin sesión (ayudantías, reuniones…) no se fusionan: cada una es un
+            // evento real e independiente, no un tramo de una misma clase.
+            claveGrupo: paralelo
+               ? `${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}-${reserva.salaCodigo}`
+               : null,
          })
       }
       // Clases sin sala del día (no existe reserva). Se omiten si hoy es feriado con alcance
@@ -639,7 +650,7 @@ export default defineEventHandler(async (event) => {
                const clave = claveClaseFisica(sesion, bloqueId)
                if (vistas.has(clave)) continue
                vistas.add(clave)
-               miAgenda.push({
+               agendaBruta.push({
                   inicio: aHora(bloque.inicio),
                   fin: aHora(bloque.fin),
                   titulo: sesion.paralelo.asignaturaPlan.asignatura.nombre,
@@ -647,12 +658,33 @@ export default defineEventHandler(async (event) => {
                   salaCodigo: null,
                   color: sesion.paralelo.color,
                   esClase: true,
+                  claveGrupo: `${sesion.paralelo.asignaturaPlan.asignaturaId}-${sesion.paralelo.codigo}-sin-sala`,
                })
             }
          }
       }
-      miAgenda.sort((a, b) => a.inicio.localeCompare(b.inicio))
    }
+
+   // Fusión por paralelo+sala: se queda con el inicio más temprano y el fin más tardío del
+   // grupo. Las reservas sueltas (claveGrupo null) pasan derecho, sin fusionar con nada.
+   const gruposAgenda = new Map<string, ResumenAgenda>()
+   const miAgenda: ResumenAgenda[] = []
+   for (const { claveGrupo, ...evento } of agendaBruta) {
+      if (!claveGrupo) {
+         miAgenda.push(evento)
+         continue
+      }
+      const existente = gruposAgenda.get(claveGrupo)
+      if (!existente) {
+         const copia = { ...evento }
+         gruposAgenda.set(claveGrupo, copia)
+         miAgenda.push(copia)
+         continue
+      }
+      if (evento.inicio < existente.inicio) existente.inicio = evento.inicio
+      if (evento.fin > existente.fin) existente.fin = evento.fin
+   }
+   miAgenda.sort((a, b) => a.inicio.localeCompare(b.inicio))
 
    const proximosFeriados = feriados
       .filter((f) => aISO(f.fecha) >= hoyISO)

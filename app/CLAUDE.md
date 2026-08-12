@@ -47,6 +47,15 @@ Los reportes (`bloques-libres`, `topes-horario`) procesan archivos en el browser
 - `SesionUsuario.rol` es el nombre de una fila de la tabla `Rol` (administrable desde `/personas/tipos`, `app/types/persona.ts`), no un enum fijo en TS. Los roles con seed inicial son `Administrador`, `Director Departamento`, `Jefe de Carrera`, `Profesor`, `Apoyo Docente`, pero un Administrador puede agregar más.
 - Cookie de sesión (`nuxt.config.ts` → `runtimeConfig.session`): `sameSite: 'lax'`, `httpOnly`, `secure`, `maxAge: 8h`. **No mover fuera de `runtimeConfig`** (nuxt-auth-utils la lee desde ahí).
 
+### Rutas públicas (sin sesión)
+
+Casi toda la app exige sesión (`auth.global.ts`). Las excepciones son `/login` y `/pantallas/<codigo>` (pantalla física en un hall/pasillo que muestra el horario de una sala — ver `app/pages/pantallas/[codigo].vue`), esta última comparada por prefijo porque el código es dinámico. Si se agrega otra ruta pública:
+
+- `app/middleware/auth.global.ts` — agregarla a `rutasPublicas` (o al chequeo de prefijo, si es dinámica).
+- El/los endpoint(s) que consume esa página **no** deben llamar a `requierePermiso`/`requiereAlgunPermiso` — documentar en el propio archivo por qué es intencional (ver `server/api/pantallas/publico/[codigo].get.ts`).
+- Layout propio sin sidebar/topbar vía `definePageMeta({ layout: '...' })` (ver `app/layouts/pantalla.vue`): el layout `default.vue` da por hecho que hay una sesión (nombre, rol, logout).
+- El middleware CSRF (`server/middleware/origen.ts`) no necesita cambios si el endpoint público es solo GET.
+
 ## Dependencias clave
 
 - **@nuxt/ui v4** — Componentes `U*`. Requiere `<UApp>` en la raíz.
@@ -87,6 +96,24 @@ Los reportes (`bloques-libres`, `topes-horario`) procesan archivos en el browser
 - **`ConfirmModal`** — confirmaciones destructivas. Props: `v-model:open`, `title`, `confirm-label`, `confirm-color`, `confirm-icon`, `loading`. Emite `@confirm`.
 - **`EmptyState`** — listas vacías / placeholders. Props: `icon`, `message`, `action?`. Emite `@action`.
 - **`TableSkeleton`** — mientras `status === 'pending'`. Prop: `rows`.
+
+## Indicadores de carga
+
+Hay dos niveles, y no se pisan:
+
+- **Navegación entre páginas** — automática, no hay que hacer nada. `app/app.vue` monta `<NuxtLoadingIndicator>` (barra de progreso superior) y `layouts/default.vue` atenúa el `<main>` con un velo y un badge "Cargando…" mientras dura. Hace falta porque las páginas resuelven sus `useFetch` con `await` en `<script setup>`: Nuxt suspende la navegación y deja la página anterior en pantalla hasta que llegan los datos. Ambos comparten el estado de `useLoadingIndicator()` (throttle de 200 ms, así que una navegación instantánea no alcanza a mostrar nada).
+- **Carga inicial de una lista** — `TableSkeleton` con `status === 'pending'`, como siempre.
+- **Refresco de datos con la página ya montada** (un `refresh()` tras guardar, un filtro que vuelve a pedir al servidor) — `useIndicadorCarga`, que reutiliza el mismo indicador global de la navegación:
+
+   ```ts
+   const { conIndicador } = useIndicadorCarga()
+
+   async function recargar() {
+      await conIndicador(() => refresh())
+   }
+   ```
+
+   Apaga el indicador aunque la operación falle, y deja pasar la excepción para que el llamador maneje el error como siempre.
 
 ## Responsive Design
 

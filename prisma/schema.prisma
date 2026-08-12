@@ -396,10 +396,11 @@ model Sala {
   capacidad  Int
   tipoSalaId Int    @map("tipo_sala_id")
 
-  tipoSala   TipoSala         @relation(fields: [tipoSalaId], references: [id])
+  tipoSala   TipoSala              @relation(fields: [tipoSalaId], references: [id])
   encargados EncargadoSala[]
   sesiones   SesionParalelo[]
   reservas   Reserva[]
+  pantallas  PantallaPublicaSala[]
 
   @@index([tipoSalaId])
   @@map("sala")
@@ -416,6 +417,35 @@ model EncargadoSala {
   @@unique([personaId, salaCodigo])
   @@index([salaCodigo])
   @@map("encargado_sala")
+}
+
+// Pantalla física en un lugar público (hall, pasillo…) que muestra en loop el horario de la
+// semana de una o más salas. `codigo` identifica la ruta pública /pantallas/<codigo> — no es
+// la PK (por si algún día conviene reasignarlo sin arrastrar el id), pero es único e
+// insensible a mayúsculas en la búsqueda (ver server/api/pantallas/publico/[codigo].get.ts).
+model PantallaPublica {
+  id               Int    @id @default(autoincrement())
+  nombre           String @db.VarChar(60)
+  codigo           String @unique @db.VarChar(20)
+  // Segundos que cada sala permanece en pantalla antes de pasar a la siguiente.
+  segundosPorSlide Int    @default(15) @map("segundos_por_slide")
+
+  salas PantallaPublicaSala[]
+
+  @@map("pantalla_publica")
+}
+
+model PantallaPublicaSala {
+  id         Int    @id @default(autoincrement())
+  pantallaId Int    @map("pantalla_id")
+  salaCodigo String @map("sala_codigo") @db.VarChar(20)
+
+  pantalla PantallaPublica @relation(fields: [pantallaId], references: [id], onDelete: Cascade)
+  sala     Sala            @relation(fields: [salaCodigo], references: [codigo])
+
+  @@unique([pantallaId, salaCodigo])
+  @@index([salaCodigo])
+  @@map("pantalla_publica_sala")
 }
 
 // ============================================================

@@ -56,7 +56,17 @@ export default defineEventHandler(async (event) => {
                id: true,
                codigo: true,
                cursoId: true,
-               curso: { select: { nombre: true, semestreId: true } },
+               // El plan y la carrera del otro paralelo permiten separar, en /cursos, los topes
+               // internos del plan de los que cruzan a otro plan (que hay que coordinar con
+               // otra carrera en vez de resolver puertas adentro).
+               curso: {
+                  select: {
+                     nombre: true,
+                     semestreId: true,
+                     planId: true,
+                     plan: { select: { numero: true, carrera: { select: { nombreCorto: true } } } },
+                  },
+               },
                asignaturaPlan: {
                   select: { exentaTope: true, asignatura: { select: { nombre: true, codigo: true } } },
                },
@@ -76,6 +86,9 @@ export default defineEventHandler(async (event) => {
       paraleloId: number
       paraleloCodigo: string
       cursoNombre: string
+      planId: number
+      planNumero: number
+      carreraNombreCorto: string
       asignaturaNombre: string
       asignaturaCodigo: string
    }
@@ -101,6 +114,9 @@ export default defineEventHandler(async (event) => {
             paraleloId: sesion.paralelo.id,
             paraleloCodigo: sesion.paralelo.codigo,
             cursoNombre: sesion.paralelo.curso.nombre,
+            planId: sesion.paralelo.curso.planId,
+            planNumero: sesion.paralelo.curso.plan.numero,
+            carreraNombreCorto: sesion.paralelo.curso.plan.carrera.nombreCorto,
             asignaturaNombre: sesion.paralelo.asignaturaPlan.asignatura.nombre,
             asignaturaCodigo: sesion.paralelo.asignaturaPlan.asignatura.codigo,
          }
@@ -127,7 +143,15 @@ export default defineEventHandler(async (event) => {
       bloqueFin: string
       tipo: 'sala' | 'profesor'
       recurso: string
-      otros: { asignaturaNombre: string; asignaturaCodigo: string; paraleloCodigo: string; cursoNombre: string }[]
+      otros: {
+         asignaturaNombre: string
+         asignaturaCodigo: string
+         paraleloCodigo: string
+         cursoNombre: string
+         planId: number
+         planNumero: number
+         carreraNombreCorto: string
+      }[]
    }
 
    // Por sesión propia (de un paralelo en scope), los topes en los que participa.
@@ -156,6 +180,9 @@ export default defineEventHandler(async (event) => {
                   asignaturaCodigo: o.asignaturaCodigo,
                   paraleloCodigo: o.paraleloCodigo,
                   cursoNombre: o.cursoNombre,
+                  planId: o.planId,
+                  planNumero: o.planNumero,
+                  carreraNombreCorto: o.carreraNombreCorto,
                })),
             })
             topesPorSesion.set(propia.sesionId, topes)

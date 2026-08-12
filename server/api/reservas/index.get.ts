@@ -1,7 +1,11 @@
 // Reservas de sala (no las de clases) para armar la vista de horario por sala: una sala y
-// un rango de fechas a la vez (la semana visible en /reservas/horario).
+// un rango de fechas a la vez (la semana visible en /reservas/horario, o cada sala elegida en
+// /reservas/imprimir, que pide una por una).
 export default defineEventHandler(async (event) => {
-   await requierePermiso(event, '/reservas/horario', 'ver')
+   await requiereAlgunPermiso(event, [
+      ['/reservas/horario', 'ver'],
+      ['/reservas/imprimir', 'ver'],
+   ])
 
    const query = getQuery(event)
    const salaCodigo = typeof query.salaCodigo === 'string' ? query.salaCodigo : undefined
