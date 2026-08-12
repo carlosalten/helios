@@ -943,7 +943,10 @@ export interface ResultadoCargaMasiva {
 export async function ejecutarCargaMasiva(ejecucion: EjecucionCargaMasiva): Promise<ResultadoCargaMasiva> {
    const { planId, semestreId } = ejecucion
 
-   const tipoClase = await prisma.tipoReserva.findFirst({ where: { nombre: 'Clase' }, select: { id: true } })
+   const tipoClase = await prisma.tipoReserva.findFirst({
+      where: { nombre: 'Clase' },
+      select: { id: true, publicaPorDefecto: true },
+   })
    if (!tipoClase) {
       throw createError({
          statusCode: 422,
@@ -1053,6 +1056,7 @@ export async function ejecutarCargaMasiva(ejecucion: EjecucionCargaMasiva): Prom
             inicio: Date
             fin: Date
             tipoReservaId: number
+            publica: boolean
             personaId: number | null
             sesionParaleloId: number
             serieId: string
@@ -1074,6 +1078,7 @@ export async function ejecutarCargaMasiva(ejecucion: EjecucionCargaMasiva): Prom
                   inicio: horario.inicio,
                   fin: horario.fin,
                   tipoReservaId: tipoClase.id,
+                  publica: tipoClase.publicaPorDefecto,
                   personaId: sesion.profesorId,
                   sesionParaleloId: creada.id,
                   serieId,

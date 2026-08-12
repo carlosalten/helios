@@ -12,6 +12,14 @@ export const crearAsignaturaSchema = z
          .trim()
          .min(1, 'El nombre es requerido')
          .max(100, 'Máximo 100 caracteres'),
+      // Nombre abreviado para espacios reducidos. Nulo: se usa `nombre` completo donde haga
+      // falta. Un string vacío se guarda como nulo, no como cadena vacía.
+      nombreCorto: z
+         .string()
+         .trim()
+         .max(50, 'Máximo 50 caracteres')
+         .nullable()
+         .transform((v) => (v ? v : null)),
       bloquesTeoria: z.number({ error: 'Los bloques de teoría son requeridos' }).int().min(0, 'No puede ser negativo'),
       bloquesPractica: z
          .number({ error: 'Los bloques de práctica son requeridos' })

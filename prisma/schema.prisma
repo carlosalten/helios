@@ -158,11 +158,14 @@ model Curso {
 }
 
 model Asignatura {
-  id              Int    @id @default(autoincrement())
-  codigo          String @unique @db.VarChar(20)
-  nombre          String @db.VarChar(100)
-  bloquesTeoria   Int    @map("bloques_teoria")
-  bloquesPractica Int    @map("bloques_practica")
+  id              Int     @id @default(autoincrement())
+  codigo          String  @unique @db.VarChar(20)
+  nombre          String  @db.VarChar(100)
+  // Nombre abreviado para espacios reducidos (ej. tarjetas de la pantalla pública). Nulo: usa
+  // `nombre` completo donde haga falta.
+  nombreCorto     String? @map("nombre_corto") @db.VarChar(50)
+  bloquesTeoria   Int     @map("bloques_teoria")
+  bloquesPractica Int     @map("bloques_practica")
 
   asignaturasPlan AsignaturaPlan[]
   // Las dos puntas de la misma relación simétrica (ver AsignaturaEquivalencia): para saber
@@ -458,12 +461,18 @@ model PantallaPublicaSala {
 // ============================================================
 
 model TipoReserva {
-  id       Int       @id @default(autoincrement())
-  nombre   String    @db.VarChar(30)
+  id                Int       @id @default(autoincrement())
+  nombre            String    @db.VarChar(30)
   // Hex de una paleta fija de 20 colores con nombre (ver COLORES_RESERVA en
   // app/types/reserva.ts): cada reserva de este tipo toma este color en /reservas/horario.
-  color    String    @db.VarChar(7)
-  reservas Reserva[]
+  color             String    @db.VarChar(7)
+  // Valor por defecto de Reserva.publica para una reserva nueva de este tipo: se usa al
+  // prellenar el formulario de nueva reserva en /reservas/horario y al generar las reservas
+  // de sala de una sesión de clases (ver regenerarReservaSesion en reservasSesion.ts y la
+  // carga masiva de horario en cargaMasiva.ts). Cambiar este valor no toca las reservas ya
+  // creadas de ese tipo, solo el default para las nuevas.
+  publicaPorDefecto Boolean   @default(true) @map("publica_por_defecto")
+  reservas          Reserva[]
 
   @@map("tipo_reserva")
 }
@@ -485,10 +494,11 @@ model Reserva {
   // (semanal); null en una reserva no recurrente. No hay un campo booleano "recurrente"
   // aparte: la recurrencia se sabe por si serieId es null o no.
   serieId          String?  @map("serie_id") @db.Uuid
-  // Si la reserva aparece en la vista impresa de /reservas/horario. Por defecto sí — se marca
-  // en false para reservas que se quieren ver en pantalla pero no en el reporte en papel (p.
-  // ej. bloqueos internos de mantenimiento).
-  imprimir         Boolean  @default(true)
+  // Si la reserva se muestra en vistas de cara al público: la vista impresa de
+  // /reservas/horario y la pantalla pública (/pantallas/<codigo>). Por defecto sí — se marca
+  // en false para reservas que deben tomar la sala en la BD pero no anunciarse (p. ej.
+  // bloqueos internos de mantenimiento).
+  publica          Boolean  @default(true)
   // Reserva cancelada: a diferencia de borrarla, queda visible (destacada en rojo) en
   // /reservas/horario y en la pantalla pública — sirve para avisar que una clase puntual no se
   // dicta ese día sin perder el registro de que la sala estaba tomada. No aplica a la serie

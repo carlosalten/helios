@@ -274,7 +274,7 @@ function celdasImpresionDeSala(salaCodigo: string) {
       const fecha = fechasSemana.value.get(dia.valor)
       const fechaISO = fecha ? formatFechaISO(fecha) : ''
       const celdas: CeldaImpresion[] = bloquesSemestre.value.map(() => ({ tipo: 'vacia' }))
-      const reservasDia = reservasSala.filter((r) => r.fecha.slice(0, 10) === fechaISO && r.imprimir)
+      const reservasDia = reservasSala.filter((r) => r.fecha.slice(0, 10) === fechaISO && r.publica)
       const tramos = agruparEnClusters(reservasDia).map<TramoImpresion>((cluster) => {
          const clusterInicioMin = Math.min(...cluster.map((r) => horaAMinutos(horaDeISO(r.inicio))))
          const clusterFinMin = Math.max(...cluster.map((r) => horaAMinutos(horaDeISO(r.fin))))
@@ -324,6 +324,13 @@ function esClase(reserva: Reserva) {
 }
 function profesorDe(reserva: Reserva) {
    return reserva.persona ? `${reserva.persona.nombre} ${reserva.persona.apellido}` : null
+}
+
+// Nombre a mostrar de la asignatura: el corto si la asignatura tiene uno definido, si no el
+// completo. Mismo criterio en /reservas/horario.
+function nombreAsignaturaDe(reserva: Reserva) {
+   const asignatura = reserva.sesionParalelo?.paralelo.asignaturaPlan.asignatura
+   return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
 }
 
 // Mismo criterio de color que /reservas/horario: cada paralelo lleva el suyo (o uno derivado
@@ -534,7 +541,7 @@ function imprimirHorarios() {
                            <p class="font-semibold wrap-break-word text-black">{{ entrada.reserva.titulo }}</p>
                            <template v-if="esClase(entrada.reserva)">
                               <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-black">
-                                 {{ entrada.reserva.sesionParalelo.paralelo.asignaturaPlan.asignatura.nombre }}
+                                 {{ nombreAsignaturaDe(entrada.reserva) }}
                               </p>
                               <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-gray-700">
                                  {{ entrada.reserva.sesionParalelo.paralelo.asignaturaPlan.plan.carrera.nombreCorto }}

@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
          fin,
          tipoReservaId: parsed.data.tipoReservaId,
          personaId: parsed.data.personaId,
-         imprimir: parsed.data.imprimir,
+         publica: parsed.data.publica,
          serieId,
       })),
    })

@@ -90,8 +90,11 @@ const colorBarraSuperior = computed(() => {
 // Un color por carrera (no por paralelo, como en /reservas/horario): en esta pantalla lo que
 // importa de un vistazo es "a qué carrera pertenece esta clase", así que todas las clases de
 // una misma carrera comparten color. Se deriva de forma estable a partir del nombre — no es
-// aleatorio, la misma carrera sale siempre del mismo color.
+// aleatorio, la misma carrera sale siempre del mismo color. Una reserva sin carrera (no es una
+// clase, o es una clase sin sesión de paralelo asociada) usa directamente el color de su tipo
+// de reserva (el mismo que se le asignó en Reservas → Tipos), igual que /reservas/horario.
 function colorDe(clase: ClasePantalla) {
+   if (!clase.esClase || !clase.carreraNombre) return clase.tipoReservaColor
    let indice = 0
    for (const caracter of clase.carreraNombre) indice = (indice * 31 + caracter.charCodeAt(0)) % COLORES_RESERVA.length
    return COLORES_RESERVA[indice]!.hex
@@ -113,16 +116,16 @@ function colorDe(clase: ClasePantalla) {
          <!-- Pantalla inexistente -->
          <div v-else-if="error" class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
             <UIcon name="i-lucide-monitor-x" class="size-14 text-white/30" />
-            <p class="text-2xl font-semibold text-white/80">Pantalla no encontrada</p>
-            <p class="text-white/40">No existe ninguna pantalla pública con el código «{{ codigo }}».</p>
+            <p class="text-2xl font-semibold text-white">Pantalla no encontrada</p>
+            <p class="text-white">No existe ninguna pantalla pública con el código «{{ codigo }}».</p>
          </div>
 
          <template v-else-if="data">
             <!-- Sin salas asignadas -->
             <div v-if="!data.hoy" class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                <UIcon name="i-lucide-door-open" class="size-14 text-white/30" />
-               <p class="text-2xl font-semibold text-white/80">{{ data.pantalla.nombre }}</p>
-               <p class="text-white/40">Esta pantalla todavía no tiene salas asignadas.</p>
+               <p class="text-2xl font-semibold text-white">{{ data.pantalla.nombre }}</p>
+               <p class="text-white">Esta pantalla todavía no tiene salas asignadas.</p>
             </div>
 
             <template v-else>
@@ -142,18 +145,18 @@ function colorDe(clase: ClasePantalla) {
                            {{ vistaActual === 'enCurso' ? 'Clases en curso' : 'Próximas clases' }}
                         </h1>
                      </div>
-                     <p class="text-white/50">{{ data.pantalla.nombre }}</p>
+                     <p class="text-white">{{ data.pantalla.nombre }}</p>
                   </div>
-                  <p class="shrink-0 font-mono text-3xl tabular-nums text-white/70">{{ horaActual }}</p>
+                  <p class="shrink-0 font-mono text-3xl tabular-nums text-white">{{ horaActual }}</p>
                </div>
 
                <!-- Lista de clases -->
                <div class="min-h-0 flex-1 overflow-y-auto">
                   <div
                      v-if="!clasesVista.length"
-                     class="flex h-full flex-col items-center justify-center gap-3 text-center text-white/40"
+                     class="flex h-full flex-col items-center justify-center gap-3 text-center text-white"
                   >
-                     <UIcon name="i-lucide-coffee" class="size-14 text-white/20" />
+                     <UIcon name="i-lucide-coffee" class="size-14 text-white" />
                      <p class="text-xl">
                         {{
                            vistaActual === 'enCurso'
@@ -166,9 +169,9 @@ function colorDe(clase: ClasePantalla) {
                      <div
                         v-for="clase in clasesVista"
                         :key="clase.id"
-                        class="rounded-xl border-s-4 p-4"
-                        :class="clase.cancelada ? 'border-red-500 bg-red-500/10' : 'bg-white/3'"
-                        :style="clase.cancelada ? {} : { borderColor: colorDe(clase) }"
+                        class="rounded-xl border border-s-4 p-4"
+                        :class="clase.cancelada ? 'border-red-500 bg-red-500/10' : 'border-white/15 bg-white/8'"
+                        :style="clase.cancelada ? {} : { borderInlineStartColor: colorDe(clase) }"
                      >
                         <div
                            v-if="clase.cancelada"
@@ -184,7 +187,7 @@ function colorDe(clase: ClasePantalla) {
                               <UIcon name="i-lucide-door-open" class="size-4" />
                               {{ clase.salaCodigo }}
                            </span>
-                           <span class="shrink-0 font-mono text-lg font-semibold tabular-nums text-white/80">
+                           <span class="shrink-0 font-mono text-lg font-semibold tabular-nums text-white">
                               {{ clase.inicio }}–{{ clase.fin }}
                            </span>
                         </div>
@@ -192,16 +195,19 @@ function colorDe(clase: ClasePantalla) {
                            class="truncate text-xl font-bold text-white"
                            :class="clase.cancelada ? 'line-through opacity-70' : ''"
                         >
-                           {{ clase.asignaturaNombre }}
+                           {{ clase.esClase && clase.asignaturaNombre ? clase.asignaturaNombre : clase.titulo }}
                         </p>
-                        <p class="truncate text-white/60">
+                        <p v-if="clase.esClase && clase.asignaturaCodigo" class="truncate text-white">
                            {{ clase.asignaturaCodigo }} · Paralelo {{ clase.paraleloCodigo }}
                         </p>
-                        <p class="truncate text-white/50">{{ clase.carreraNombre }}</p>
-                        <p class="mt-2 flex items-center gap-1.5 truncate text-white/60">
+                        <p v-if="clase.esClase && clase.carreraNombre" class="truncate text-white">
+                           {{ clase.carreraNombre }}
+                        </p>
+                        <p v-if="!clase.esClase" class="truncate text-white">{{ clase.tipoReservaNombre }}</p>
+                        <p class="mt-2 flex items-center gap-1.5 truncate text-white">
                            <UIcon name="i-lucide-user" class="size-4 shrink-0" />
-                           <span :class="clase.profesor ? '' : 'italic'">
-                              {{ clase.profesor ?? 'Sin profesor asignado' }}
+                           <span :class="clase.responsable ? '' : 'italic'">
+                              {{ clase.responsable ?? 'Sin responsable asignado' }}
                            </span>
                         </p>
                      </div>

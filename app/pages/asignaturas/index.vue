@@ -23,6 +23,7 @@ const { paginaActual, itemsPagina: asignaturasPagina, porPagina } = usePaginacio
 const columnas: TableColumn<Asignatura>[] = [
    { accessorKey: 'codigo', header: 'Código', size: 120 },
    { accessorKey: 'nombre', header: 'Nombre' },
+   { accessorKey: 'nombreCorto', header: 'Nombre corto', size: 140 },
    { id: 'bloques', header: 'Bloques (T/P)', size: 130 },
    { id: 'planes', header: 'Planes', size: 100 },
    { id: 'acciones', header: '', size: 80 },
@@ -39,7 +40,7 @@ function abrirPlanes(asignatura: Asignatura) {
 
 /* ── Crear ───────────────────────────────────────────────── */
 const modalCrearMostrar = ref(false)
-const formCrear = reactive({ codigo: '', nombre: '', bloquesTeoria: 0, bloquesPractica: 0 })
+const formCrear = reactive({ codigo: '', nombre: '', nombreCorto: '', bloquesTeoria: 0, bloquesPractica: 0 })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 const errorGuardarCodigo = computed(() => (errorGuardar.value?.includes('código') ? errorGuardar.value : undefined))
@@ -51,6 +52,7 @@ const errorGuardarBloques = computed(() =>
 function abrirCrear() {
    formCrear.codigo = ''
    formCrear.nombre = ''
+   formCrear.nombreCorto = ''
    formCrear.bloquesTeoria = 0
    formCrear.bloquesPractica = 0
    errorGuardar.value = null
@@ -66,6 +68,7 @@ async function guardar() {
          body: {
             codigo: formCrear.codigo,
             nombre: formCrear.nombre,
+            nombreCorto: formCrear.nombreCorto,
             bloquesTeoria: Number(formCrear.bloquesTeoria),
             bloquesPractica: Number(formCrear.bloquesPractica),
          },
@@ -83,7 +86,7 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const asignaturaEditar = ref<Asignatura | null>(null)
-const formEditar = reactive({ codigo: '', nombre: '', bloquesTeoria: 0, bloquesPractica: 0 })
+const formEditar = reactive({ codigo: '', nombre: '', nombreCorto: '', bloquesTeoria: 0, bloquesPractica: 0 })
 const errorEditar = ref<string | null>(null)
 const errorEditarCodigo = computed(() => (errorEditar.value?.includes('código') ? errorEditar.value : undefined))
 const errorEditarNombre = computed(() => (errorEditar.value?.includes('nombre') ? errorEditar.value : undefined))
@@ -95,6 +98,7 @@ function abrirEditar(asignatura: Asignatura) {
    asignaturaEditar.value = asignatura
    formEditar.codigo = asignatura.codigo
    formEditar.nombre = asignatura.nombre
+   formEditar.nombreCorto = asignatura.nombreCorto ?? ''
    formEditar.bloquesTeoria = asignatura.bloquesTeoria
    formEditar.bloquesPractica = asignatura.bloquesPractica
    errorEditar.value = null
@@ -112,6 +116,7 @@ async function guardarEditar() {
          body: {
             codigo: formEditar.codigo,
             nombre: formEditar.nombre,
+            nombreCorto: formEditar.nombreCorto,
             bloquesTeoria: Number(formEditar.bloquesTeoria),
             bloquesPractica: Number(formEditar.bloquesPractica),
          },
@@ -185,6 +190,9 @@ async function confirmarEliminar() {
             @action="abrirCrear"
          />
          <UTable v-else :data="asignaturasPagina" :columns="columnas">
+            <template #nombreCorto-cell="{ row }">
+               <span class="text-usm-text dark:text-white">{{ row.original.nombreCorto ?? '—' }}</span>
+            </template>
             <template #bloques-cell="{ row }">
                <span class="text-usm-text dark:text-white">
                   {{ row.original.bloquesTeoria }} / {{ row.original.bloquesPractica }}
@@ -245,6 +253,9 @@ async function confirmarEliminar() {
                <UFormField label="Nombre" name="nombre" :error="errorGuardarNombre">
                   <UInput v-model="formCrear.nombre" placeholder="Cálculo I, Programación Avanzada…" class="w-full" />
                </UFormField>
+               <UFormField label="Nombre corto" name="nombreCorto" description="Opcional, para espacios reducidos.">
+                  <UInput v-model="formCrear.nombreCorto" placeholder="Cálculo I…" class="w-full" />
+               </UFormField>
                <UFormField name="bloques" :error="errorGuardarBloques">
                   <div class="grid grid-cols-2 gap-4">
                      <UFormField label="Bloques de teoría" name="bloquesTeoria">
@@ -293,6 +304,9 @@ async function confirmarEliminar() {
                </UFormField>
                <UFormField label="Nombre" name="nombre" :error="errorEditarNombre">
                   <UInput v-model="formEditar.nombre" class="w-full" />
+               </UFormField>
+               <UFormField label="Nombre corto" name="nombreCorto" description="Opcional, para espacios reducidos.">
+                  <UInput v-model="formEditar.nombreCorto" class="w-full" />
                </UFormField>
                <UFormField name="bloques" :error="errorEditarBloques">
                   <div class="grid grid-cols-2 gap-4">
