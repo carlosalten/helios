@@ -13,6 +13,30 @@ function aHora(hora: Date) {
    return hora.toISOString().slice(11, 16)
 }
 
+// "Hoy" y "ahora" en la hora de pared de Chile — NO la del proceso de Node, que en producción
+// suele correr en UTC (Render y la mayoría de los hosts en la nube). Antes esto se calculaba
+// con getters locales (getHours, getDate…), que dependían del huso horario del contenedor: en
+// desarrollo local coincidía por casualidad (el Mac del desarrollador está en hora de Chile),
+// pero en producción "ahora" quedaba desfasado varias horas y ninguna reserva calzaba nunca —
+// la pantalla no mostraba ni "en curso" ni "próximas". `Intl.DateTimeFormat` con `timeZone`
+// explícito da el mismo resultado sin importar en qué huso corra el servidor.
+const FORMATO_CHILE = new Intl.DateTimeFormat('en-CA', {
+   timeZone: 'America/Santiago',
+   year: 'numeric',
+   month: '2-digit',
+   day: '2-digit',
+   hour: '2-digit',
+   minute: '2-digit',
+   hourCycle: 'h23',
+})
+function hoyYAhoraChile(fecha: Date) {
+   const partes = new Map(FORMATO_CHILE.formatToParts(fecha).map((p) => [p.type, p.value]))
+   return {
+      hoyISO: `${partes.get('year')}-${partes.get('month')}-${partes.get('day')}`,
+      ahoraHHMM: `${partes.get('hour')}:${partes.get('minute')}`,
+   }
+}
+
 interface ClaseResumen {
    id: number
    salaCodigo: string
@@ -95,16 +119,11 @@ export default defineEventHandler(async (event) => {
    const salaCodigos = pantalla.salas.map((ps) => ps.salaCodigo)
    if (!salaCodigos.length) return { ...respuestaBase, hoy: null, enCurso: [], proximas: [] }
 
-   // Reloj y fecha del SERVIDOR: a diferencia de /dashboard o /reservas/horario, acá no hay una
-   // persona logueada cuyo huso horario importe — es una pantalla física fija, así que "hoy" y
-   // "ahora" son los del servidor (se asume misma zona horaria que la institución, igual que el
-   // resto de las horas de la app: bloques y reservas se guardan como hora de pared, sin
-   // conversión de huso). `getHours`/`getMonth` (locales, no UTC) para que calcen con cómo
-   // Bloque/Reserva.inicio se leen ya en server/api/dashboard.get.ts y compañía.
-   const ahora = new Date()
-   const hoyISO = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
+   // A diferencia de /dashboard o /reservas/horario, acá no hay una persona logueada cuyo huso
+   // horario importe — es una pantalla física fija en Chile, así que "hoy" y "ahora" van
+   // fijados a esa zona (ver `hoyYAhoraChile`), no a la del servidor.
+   const { hoyISO, ahoraHHMM } = hoyYAhoraChile(new Date())
    const hoy = new Date(`${hoyISO}T00:00:00.000Z`)
-   const ahoraHHMM = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`
 
    // Plantilla de bloques del semestre vigente: hace falta para saber qué bloque (número) es
    // cada reserva y así detectar bloques contiguos — ver `fusionarBloquesContiguos`.
