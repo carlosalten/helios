@@ -17,6 +17,10 @@ export const crearTipoReservaSchema = z.object({
       .max(30, 'Máximo 30 caracteres')
       .transform(capitalizarPrimeraLetra),
    color: colorReservaSchema,
+   // Valor por defecto de Reserva.publica para una reserva nueva de este tipo (ver comentario
+   // en schema.prisma). Con default: los payloads viejos que no lo mandan siguen siendo
+   // públicos por defecto.
+   publicaPorDefecto: z.boolean().default(true),
 })
 
 const horaSchema = (mensajeRequerido: string) =>
@@ -43,9 +47,10 @@ export const crearReservaSchema = z
       tipoReservaId: z.number({ error: 'El tipo de reserva es requerido' }).int(),
       // Nulo: reserva sin responsable designado (ver Reserva.personaId en schema.prisma).
       personaId: z.number().int().nullable(),
-      // Si aparece en la vista impresa de /reservas/horario. Con default: los payloads viejos
-      // (sesiones de clases, integraciones) que no mandan el campo siguen imprimiéndose.
-      imprimir: z.boolean().default(true),
+      // Si se muestra en vistas de cara al público (impresa de /reservas/horario y pantalla
+      // pública). Con default: los payloads viejos (sesiones de clases, integraciones) que no
+      // mandan el campo siguen mostrándose.
+      publica: z.boolean().default(true),
    })
    .refine((data) => data.fin > data.inicio, {
       error: 'La hora de término debe ser posterior a la hora de inicio',
@@ -87,8 +92,9 @@ export const crearReservaRecurrenteSchema = z
       tipoReservaId: z.number({ error: 'El tipo de reserva es requerido' }).int(),
       // Nulo: reserva sin responsable designado (ver Reserva.personaId en schema.prisma).
       personaId: z.number().int().nullable(),
-      // Si las reservas de la serie aparecen en la vista impresa de /reservas/horario.
-      imprimir: z.boolean().default(true),
+      // Si las reservas de la serie se muestran en vistas de cara al público (impresa y
+      // pantalla pública).
+      publica: z.boolean().default(true),
    })
    .refine((data) => data.fin > data.inicio, {
       error: 'La hora de término debe ser posterior a la hora de inicio',

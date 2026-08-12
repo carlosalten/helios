@@ -449,12 +449,25 @@ const formCrear = reactive({
    personaId: 0,
    recurrente: false,
    repetirHasta: '',
-   imprimir: true,
+   publica: true,
 })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 
 const personaPropia = computed(() => (personas.value ?? []).find((p) => p.email === user.value?.email) ?? null)
+
+// Cada tipo de reserva trae su propio valor por defecto para "Reserva pública" (ver
+// TipoReserva.publicaPorDefecto) — se usa para prellenar el formulario de reserva nueva, no en
+// edición (una reserva ya creada conserva el valor que tiene, aunque se le cambie el tipo).
+function publicaPorDefectoDe(tipoReservaId: number) {
+   return tiposReserva.value?.find((t) => t.id === tipoReservaId)?.publicaPorDefecto ?? true
+}
+watch(
+   () => formCrear.tipoReservaId,
+   (tipoReservaId) => {
+      formCrear.publica = publicaPorDefectoDe(tipoReservaId)
+   }
+)
 
 function abrirCrear(diaValor: number, franja: Franja) {
    if (!puedeCrear.value || !salaSeleccionada.value) return
@@ -475,7 +488,7 @@ function abrirCrear(diaValor: number, franja: Franja) {
    formCrear.personaId = personaPropia.value?.id ?? personas.value?.[0]?.id ?? 0
    formCrear.recurrente = false
    formCrear.repetirHasta = ''
-   formCrear.imprimir = true
+   formCrear.publica = publicaPorDefectoDe(formCrear.tipoReservaId)
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -496,7 +509,7 @@ async function guardar() {
                fin: formCrear.fin,
                tipoReservaId: Number(formCrear.tipoReservaId),
                personaId: Number(formCrear.personaId),
-               imprimir: formCrear.imprimir,
+               publica: formCrear.publica,
             },
          })
          modalCrearMostrar.value = false
@@ -517,7 +530,7 @@ async function guardar() {
                fin: formCrear.fin,
                tipoReservaId: Number(formCrear.tipoReservaId),
                personaId: Number(formCrear.personaId),
-               imprimir: formCrear.imprimir,
+               publica: formCrear.publica,
             },
          })
          modalCrearMostrar.value = false
@@ -607,7 +620,7 @@ const formEditar = reactive({
    fin: '',
    tipoReservaId: 0,
    personaId: 0,
-   imprimir: true,
+   publica: true,
 })
 const errorEditar = ref<string | null>(null)
 const confirmAlcanceEditarMostrar = ref(false)
@@ -621,7 +634,7 @@ function abrirEditar(reserva: Reserva) {
    formEditar.tipoReservaId = reserva.tipoReservaId
    // 0 = "sin responsable" en el formulario; al guardar se vuelve a convertir en null.
    formEditar.personaId = reserva.personaId ?? 0
-   formEditar.imprimir = reserva.imprimir
+   formEditar.publica = reserva.publica
    errorEditar.value = null
    modalDetalleMostrar.value = false
    modalEditarMostrar.value = true
@@ -657,7 +670,7 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
             fin: formEditar.fin,
             tipoReservaId: Number(formEditar.tipoReservaId),
             personaId: Number(formEditar.personaId) || null,
-            imprimir: formEditar.imprimir,
+            publica: formEditar.publica,
          },
       })
       confirmAlcanceEditarMostrar.value = false
@@ -734,7 +747,7 @@ async function onDropCelda(diaValor: number, franja: Franja, e: DragEvent) {
             fin: minutosAHora(finMin),
             tipoReservaId: reserva.tipoReservaId,
             personaId: reserva.personaId,
-            imprimir: reserva.imprimir,
+            publica: reserva.publica,
          },
       })
       await refrescarReservas()
@@ -804,7 +817,7 @@ async function pegarReserva(diaValor: number, franja: Franja) {
       fin: minutosAHora(finMin),
       tipoReservaId: original.tipoReservaId,
       personaId: original.personaId,
-      imprimir: original.imprimir,
+      publica: original.publica,
    }
 
    try {
@@ -956,9 +969,9 @@ const celdasImpresionPorDia = computed(() => {
       const fecha = fechasSemana.value.get(dia.valor)
       const fechaISO = fecha ? formatFechaISO(fecha) : ''
       const celdas: CeldaImpresion[] = bloquesSemestre.value.map(() => ({ tipo: 'vacia' }))
-      // `imprimir` en false: se ve en pantalla igual que cualquier otra (arriba, en
-      // `gridPorDia`), pero queda fuera del reporte en papel.
-      const reservasDia = (reservas.value ?? []).filter((r) => r.fecha.slice(0, 10) === fechaISO && r.imprimir)
+      // `publica` en false: se ve en pantalla igual que cualquier otra (arriba, en
+      // `gridPorDia`), pero queda fuera del reporte en papel (y de la pantalla pública).
+      const reservasDia = (reservas.value ?? []).filter((r) => r.fecha.slice(0, 10) === fechaISO && r.publica)
       const tramos = agruparEnClusters(reservasDia).map<TramoImpresion>((cluster) => {
          const clusterInicioMin = Math.min(...cluster.map((r) => horaAMinutos(horaDeISO(r.inicio))))
          const clusterFinMin = Math.max(...cluster.map((r) => horaAMinutos(horaDeISO(r.fin))))
@@ -1006,6 +1019,13 @@ function esClase(reserva: Reserva) {
 }
 function profesorDe(reserva: Reserva) {
    return reserva.persona ? `${reserva.persona.nombre} ${reserva.persona.apellido}` : null
+}
+
+// Nombre a mostrar de la asignatura de una reserva de sesión de clases: el corto si la
+// asignatura tiene uno definido, si no el completo. Mismo criterio en /reservas/imprimir.
+function nombreAsignaturaDe(reserva: Reserva) {
+   const asignatura = reserva.sesionParalelo?.paralelo.asignaturaPlan.asignatura
+   return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
 }
 
 // Color impreso de una reserva. Las clases NO usan el color de su tipo: todas serían del mismo
@@ -1342,19 +1362,15 @@ watch(editandoAlgo, async (ocupado) => {
                                                 title="Reserva recurrente"
                                              />
                                              <UIcon
-                                                v-if="!rp.reserva.imprimir"
-                                                name="i-lucide-printer-x"
+                                                v-if="!rp.reserva.publica"
+                                                name="i-lucide-eye-off"
                                                 class="size-3 shrink-0"
-                                                title="No se incluye en la vista impresa"
+                                                title="No se incluye en la vista impresa ni en la pantalla pública"
                                              />
                                              <span class="truncate">{{ rp.reserva.titulo }}</span>
                                           </span>
                                           <template v-if="rp.reserva.sesionParalelo">
-                                             <div class="truncate">
-                                                {{
-                                                   rp.reserva.sesionParalelo.paralelo.asignaturaPlan.asignatura.nombre
-                                                }}
-                                             </div>
+                                             <div class="truncate">{{ nombreAsignaturaDe(rp.reserva) }}</div>
                                              <div class="truncate">
                                                 {{
                                                    rp.reserva.sesionParalelo.paralelo.asignaturaPlan.plan.carrera
@@ -1445,9 +1461,9 @@ watch(editandoAlgo, async (ocupado) => {
                   <UInput v-model="formCrear.repetirHasta" type="date" :min="formCrear.fecha" class="w-full" />
                </UFormField>
                <USwitch
-                  v-model="formCrear.imprimir"
-                  label="Incluir en la vista impresa"
-                  description="Desactívalo para que la reserva se vea en pantalla pero no salga en el reporte en papel."
+                  v-model="formCrear.publica"
+                  label="Reserva pública"
+                  description="Desactívalo para que la reserva tome la sala igual, pero no aparezca en el reporte en papel ni en la pantalla pública."
                />
             </UForm>
          </template>
@@ -1482,11 +1498,11 @@ watch(editandoAlgo, async (ocupado) => {
                         Recurrente
                      </span>
                      <span
-                        v-if="!reservaSeleccionada.imprimir"
+                        v-if="!reservaSeleccionada.publica"
                         class="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-500/10 px-2 py-0.5 text-xs font-normal text-usm-text-muted dark:text-slate-400"
                      >
-                        <UIcon name="i-lucide-printer-x" class="size-3" />
-                        No se imprime
+                        <UIcon name="i-lucide-eye-off" class="size-3" />
+                        No es pública
                      </span>
                      <span
                         v-if="reservaSeleccionada.cancelada"
@@ -1500,7 +1516,7 @@ watch(editandoAlgo, async (ocupado) => {
                <div v-if="reservaSeleccionada.sesionParalelo">
                   <p class="text-xs text-usm-text-muted dark:text-slate-400">Asignatura</p>
                   <p class="font-medium text-usm-text dark:text-white">
-                     {{ reservaSeleccionada.sesionParalelo.paralelo.asignaturaPlan.asignatura.nombre }}
+                     {{ nombreAsignaturaDe(reservaSeleccionada) }}
                   </p>
                   <p class="text-usm-text-muted dark:text-slate-400">
                      {{ reservaSeleccionada.sesionParalelo.paralelo.asignaturaPlan.plan.carrera.nombre }} — Plan N°
@@ -1707,9 +1723,9 @@ watch(editandoAlgo, async (ocupado) => {
                   />
                </UFormField>
                <USwitch
-                  v-model="formEditar.imprimir"
-                  label="Incluir en la vista impresa"
-                  description="Desactívalo para que la reserva se vea en pantalla pero no salga en el reporte en papel."
+                  v-model="formEditar.publica"
+                  label="Reserva pública"
+                  description="Desactívalo para que la reserva tome la sala igual, pero no aparezca en el reporte en papel ni en la pantalla pública."
                />
             </UForm>
          </template>
@@ -1849,7 +1865,7 @@ watch(editandoAlgo, async (ocupado) => {
                            </p>
                            <template v-if="esClase(entrada.reserva)">
                               <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-black">
-                                 {{ entrada.reserva.sesionParalelo.paralelo.asignaturaPlan.asignatura.nombre }}
+                                 {{ nombreAsignaturaDe(entrada.reserva) }}
                               </p>
                               <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-gray-700">
                                  {{ entrada.reserva.sesionParalelo.paralelo.asignaturaPlan.plan.carrera.nombreCorto }}

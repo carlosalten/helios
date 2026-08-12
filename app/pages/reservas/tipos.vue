@@ -14,6 +14,7 @@ const { paginaActual, itemsPagina: tiposPagina, porPagina } = usePaginacion(comp
 const columnas: TableColumn<TipoReserva>[] = [
    { accessorKey: 'nombre', header: 'Nombre' },
    { id: 'color', header: 'Color', size: 140 },
+   { id: 'publicaPorDefecto', header: 'Pública por defecto', size: 160 },
    { id: 'acciones', header: '', size: 80 },
 ]
 
@@ -23,13 +24,14 @@ function nombreColor(hex: string) {
 
 /* ── Crear ───────────────────────────────────────────────── */
 const modalCrearMostrar = ref(false)
-const formCrear = reactive({ nombre: '', color: COLORES_RESERVA[0].hex as string })
+const formCrear = reactive({ nombre: '', color: COLORES_RESERVA[0].hex as string, publicaPorDefecto: true })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 
 function abrirCrear() {
    formCrear.nombre = ''
    formCrear.color = COLORES_RESERVA[0].hex
+   formCrear.publicaPorDefecto = true
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -40,7 +42,7 @@ async function guardar() {
    try {
       await $fetch('/api/reservas/tipos', {
          method: 'POST',
-         body: { nombre: formCrear.nombre, color: formCrear.color },
+         body: { nombre: formCrear.nombre, color: formCrear.color, publicaPorDefecto: formCrear.publicaPorDefecto },
       })
       modalCrearMostrar.value = false
       await refresh()
@@ -55,13 +57,14 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const tipoEditar = ref<TipoReserva | null>(null)
-const formEditar = reactive({ nombre: '', color: COLORES_RESERVA[0].hex as string })
+const formEditar = reactive({ nombre: '', color: COLORES_RESERVA[0].hex as string, publicaPorDefecto: true })
 const errorEditar = ref<string | null>(null)
 
 function abrirEditar(tipo: TipoReserva) {
    tipoEditar.value = tipo
    formEditar.nombre = tipo.nombre
    formEditar.color = tipo.color
+   formEditar.publicaPorDefecto = tipo.publicaPorDefecto
    errorEditar.value = null
    modalEditarMostrar.value = true
 }
@@ -72,7 +75,10 @@ async function guardarEditar() {
    errorEditar.value = null
    try {
       const url: string = `/api/reservas/tipos/${tipoEditar.value.id}`
-      await $fetch(url, { method: 'PATCH', body: { nombre: formEditar.nombre, color: formEditar.color } })
+      await $fetch(url, {
+         method: 'PATCH',
+         body: { nombre: formEditar.nombre, color: formEditar.color, publicaPorDefecto: formEditar.publicaPorDefecto },
+      })
       modalEditarMostrar.value = false
       await refresh()
       toast.add({ title: 'Tipo actualizado', color: 'success', icon: 'i-lucide-check-circle' })
@@ -144,6 +150,10 @@ async function confirmarEliminar() {
                   <span class="text-sm text-usm-text dark:text-white">{{ nombreColor(row.original.color) }}</span>
                </div>
             </template>
+            <template #publicaPorDefecto-cell="{ row }">
+               <UBadge v-if="row.original.publicaPorDefecto" color="success" variant="subtle" size="sm">Sí</UBadge>
+               <UBadge v-else color="neutral" variant="subtle" size="sm">No</UBadge>
+            </template>
             <template #acciones-cell="{ row }">
                <div class="flex justify-end gap-1">
                   <UTooltip text="Editar">
@@ -203,6 +213,11 @@ async function confirmarEliminar() {
                      />
                   </div>
                </UFormField>
+               <USwitch
+                  v-model="formCrear.publicaPorDefecto"
+                  label="Pública por defecto"
+                  description="Valor inicial de 'Reserva pública' al crear una reserva de este tipo (vista impresa y pantalla pública)."
+               />
             </UForm>
          </template>
          <template #footer>
@@ -246,6 +261,11 @@ async function confirmarEliminar() {
                      />
                   </div>
                </UFormField>
+               <USwitch
+                  v-model="formEditar.publicaPorDefecto"
+                  label="Pública por defecto"
+                  description="Valor inicial de 'Reserva pública' al crear una reserva de este tipo (vista impresa y pantalla pública)."
+               />
             </UForm>
          </template>
          <template #footer>

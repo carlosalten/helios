@@ -69,7 +69,10 @@ export async function regenerarReservaSesion(
    await eliminarReservaSesion(sesion.id, hoy)
    if (!sesion.salaCodigo) return
 
-   const tipoReserva = await prisma.tipoReserva.findFirst({ where: { nombre: 'Clase' } })
+   const tipoReserva = await prisma.tipoReserva.findFirst({
+      where: { nombre: 'Clase' },
+      select: { id: true, publicaPorDefecto: true },
+   })
    if (!tipoReserva) {
       throw createError({
          statusCode: 422,
@@ -104,6 +107,7 @@ export async function regenerarReservaSesion(
          inicio: bloque.inicio,
          fin: bloque.fin,
          tipoReservaId: tipoReserva.id,
+         publica: tipoReserva.publicaPorDefecto,
          personaId: responsableId,
          sesionParaleloId: sesion.id,
          serieId,
