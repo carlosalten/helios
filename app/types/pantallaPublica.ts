@@ -12,19 +12,31 @@ export interface PantallaPublica {
 }
 
 /* ── Forma que devuelve el endpoint público /api/pantallas/publico/[codigo] ──────────────
-   Clases EN CURSO y PRÓXIMAS A INICIAR hoy en las salas de la pantalla — no el horario
-   completo. Deliberadamente distinta (y más plana) que `Reserva` (app/types/reserva.ts): la
-   pantalla pública no necesita ids de edición ni el detalle completo de sesión/persona. */
+   Reservas EN CURSO y PRÓXIMAS A INICIAR hoy en las salas de la pantalla — no el horario
+   completo. Incluye cualquier tipo de reserva pública (clases, reuniones, eventos, bloqueos
+   manuales…), no solo sesiones de clases — ver `esClase`. Deliberadamente distinta (y más
+   plana) que `Reserva` (app/types/reserva.ts): la pantalla pública no necesita ids de edición
+   ni el detalle completo de sesión/persona. */
 export interface ClasePantalla {
    id: number
    salaCodigo: string
-   carreraNombre: string
-   asignaturaCodigo: string
-   asignaturaNombre: string
-   paraleloCodigo: string
+   titulo: string
+   // Si se lee como una clase (asignatura/carrera/profesor) o como una reserva genérica
+   // (título/tipo/responsable) — mismo criterio que `esClase` en /reservas/horario: el tipo es
+   // "Clase" o "Ayudantía", tenga o no sesión de paralelo asociada.
+   esClase: boolean
+   // Presentes solo si `esClase` y la reserva viene de una sesión de paralelo real.
+   asignaturaCodigo: string | null
+   // Ya resuelto en el backend: nombre corto de la asignatura si tiene uno definido, si no el
+   // completo — mismo criterio que `nombreAsignaturaDe` en /reservas/horario.
+   asignaturaNombre: string | null
+   paraleloCodigo: string | null
+   carreraNombre: string | null
+   tipoReservaNombre: string
+   tipoReservaColor: string
    inicio: string
    fin: string
-   profesor: string | null
+   responsable: string | null
    cancelada: boolean
 }
 

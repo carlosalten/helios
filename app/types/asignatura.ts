@@ -2,6 +2,9 @@ export interface Asignatura {
    id: number
    codigo: string
    nombre: string
+   // Nombre abreviado para espacios reducidos (ej. tarjetas de la pantalla pública). Nulo: se
+   // usa `nombre` completo donde haga falta.
+   nombreCorto: string | null
    bloquesTeoria: number
    bloquesPractica: number
    asignaturasPlan: {

@@ -5,10 +5,13 @@
 // que actúa como "llave" de la pantalla — ver pantallasPublicas.schemas.ts para el formato
 // aceptado.
 //
-// Muestra qué clases están EN CURSO y cuáles están PRÓXIMAS A INICIAR (hoy) en las salas de la
+// Muestra qué reservas están EN CURSO y cuáles están PRÓXIMAS A INICIAR (hoy) en las salas de la
 // pantalla — no el horario completo de la semana: es una pantalla de "estado actual", como un
-// tótem de aeropuerto. Solo reservas de una sesión de clases (`sesionParaleloId` no nulo):
-// ayudantías/reuniones sueltas no traen carrera/asignatura/paralelo, que es lo que se muestra.
+// tótem de aeropuerto. Se muestra CUALQUIER tipo de reserva (clases generadas desde un paralelo,
+// reuniones, eventos, bloqueos manuales, …), no solo las que vienen de una sesión de clases — el
+// único filtro es `publica: true` (mismo campo que controla la vista impresa de
+// /reservas/horario): una reserva marcada como no pública toma la sala igual, pero no debe
+// anunciarse acá.
 function aHora(hora: Date) {
    return hora.toISOString().slice(11, 16)
 }
@@ -37,16 +40,27 @@ function hoyYAhoraChile(fecha: Date) {
    }
 }
 
+// Una reserva se "lee como clase" (muestra asignatura/carrera/profesor en vez de tipo/título) si
+// su tipo es Clase o Ayudantía — mismo criterio que `esClase` en /reservas/horario. No se mira
+// `sesionParaleloId`: una ayudantía es una reserva hecha a mano, sin sesión asociada, pero se
+// lee igual que una clase. Si además tiene sesión (`sesionParalelo`), se sabe la asignatura y
+// carrera concretas; si no, se muestra solo el título y el profesor/responsable, si tiene.
+const TIPOS_CLASE = ['Clase', 'Ayudantía']
+
 interface ClaseResumen {
    id: number
    salaCodigo: string
-   carreraNombre: string
-   asignaturaCodigo: string
-   asignaturaNombre: string
-   paraleloCodigo: string
+   titulo: string
+   esClase: boolean
+   asignaturaCodigo: string | null
+   asignaturaNombre: string | null
+   paraleloCodigo: string | null
+   carreraNombre: string | null
+   tipoReservaNombre: string
+   tipoReservaColor: string
    inicio: string
    fin: string
-   profesor: string | null
+   responsable: string | null
    cancelada: boolean
 }
 
@@ -56,19 +70,20 @@ interface ClaseResumen {
 // horario. Se fusionan en una sola por clase física (sala+asignatura+paralelo), extendiendo
 // el rango hasta el bloque contiguo siguiente. La contigüidad es por NÚMERO de bloque, no por
 // hora: entre dos bloques puede haber un recreo, y esa clase sigue "en curso" durante el
-// recreo — no corresponde mostrarla como terminada ni que la sala aparezca libre.
+// recreo — no corresponde mostrarla como terminada ni que la sala aparezca libre. Una reserva
+// sin paralelo (reunión, evento, bloqueo manual) nunca se fusiona con otra: cada una queda en
+// su propio grupo (`grupoId` único), así que pasa directo sin tocar `fusionarBloquesContiguos`.
 interface ReservaCruda extends ClaseResumen {
-   asignaturaId: number
+   grupoId: string
    bloqueNumero: number | null
 }
 
 function fusionarBloquesContiguos(crudas: ReservaCruda[]): ClaseResumen[] {
    const porClave = new Map<string, ReservaCruda[]>()
    for (const r of crudas) {
-      const clave = `${r.salaCodigo}-${r.asignaturaId}-${r.paraleloCodigo}`
-      const lista = porClave.get(clave) ?? []
+      const lista = porClave.get(r.grupoId) ?? []
       lista.push(r)
-      porClave.set(clave, lista)
+      porClave.set(r.grupoId, lista)
    }
 
    const resultado: ClaseResumen[] = []
@@ -132,9 +147,10 @@ export default defineEventHandler(async (event) => {
    const bloqueNumeroPorHoraInicio = new Map(bloques.map((b) => [aHora(b.inicio), b.numero]))
 
    const reservas = await prisma.reserva.findMany({
-      where: { salaCodigo: { in: salaCodigos }, fecha: hoy, sesionParaleloId: { not: null } },
+      where: { salaCodigo: { in: salaCodigos }, fecha: hoy, publica: true },
       include: {
          persona: { select: { nombre: true, apellido: true } },
+         tipoReserva: true,
          sesionParalelo: {
             include: {
                paralelo: {
@@ -148,33 +164,44 @@ export default defineEventHandler(async (event) => {
 
    // El mismo paralelo dictado en otro curso (ver server/utils/sesionesEspejo.ts) genera una
    // reserva por curso sobre la MISMA sala a la misma hora — es una sola clase física. Se
-   // deduplica por sala+asignatura+paralelo+inicio, mismo criterio que /api/dashboard.
+   // deduplica por sala+asignatura+paralelo+inicio, mismo criterio que /api/dashboard. Una
+   // reserva sin paralelo no tiene ese problema (no hay "espejo" fuera de sesiones de clases),
+   // así que se deduplica trivialmente por su propio id.
    const vistas = new Set<string>()
    const crudas: ReservaCruda[] = []
 
    for (const r of reservas) {
-      const sesion = r.sesionParalelo
-      if (!sesion) continue
-      const { paralelo } = sesion
+      const paralelo = r.sesionParalelo?.paralelo ?? null
       const inicio = aHora(r.inicio)
       const fin = aHora(r.fin)
 
-      const clave = `${r.salaCodigo}-${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}-${inicio}`
-      if (vistas.has(clave)) continue
-      vistas.add(clave)
+      const claveDedup = paralelo
+         ? `${r.salaCodigo}-${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}-${inicio}`
+         : `reserva-${r.id}`
+      if (vistas.has(claveDedup)) continue
+      vistas.add(claveDedup)
 
       crudas.push({
          id: r.id,
          salaCodigo: r.salaCodigo,
-         carreraNombre: paralelo.asignaturaPlan.plan.carrera.nombre,
-         asignaturaCodigo: paralelo.asignaturaPlan.asignatura.codigo,
-         asignaturaId: paralelo.asignaturaPlan.asignaturaId,
-         asignaturaNombre: paralelo.asignaturaPlan.asignatura.nombre,
-         paraleloCodigo: paralelo.codigo,
+         titulo: r.titulo,
+         esClase: TIPOS_CLASE.includes(r.tipoReserva.nombre),
+         asignaturaCodigo: paralelo?.asignaturaPlan.asignatura.codigo ?? null,
+         // Nombre corto si la asignatura tiene uno definido, si no el completo — mismo criterio
+         // que /reservas/horario (ver `nombreAsignaturaDe`).
+         asignaturaNombre:
+            paralelo?.asignaturaPlan.asignatura.nombreCorto ?? paralelo?.asignaturaPlan.asignatura.nombre ?? null,
+         paraleloCodigo: paralelo?.codigo ?? null,
+         carreraNombre: paralelo?.asignaturaPlan.plan.carrera.nombre ?? null,
+         tipoReservaNombre: r.tipoReserva.nombre,
+         tipoReservaColor: r.tipoReserva.color,
          inicio,
          fin,
-         profesor: r.persona ? `${r.persona.nombre} ${r.persona.apellido}` : null,
+         responsable: r.persona ? `${r.persona.nombre} ${r.persona.apellido}` : null,
          cancelada: r.cancelada,
+         grupoId: paralelo
+            ? `${r.salaCodigo}-${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}`
+            : `sola-${r.id}`,
          bloqueNumero: bloqueNumeroPorHoraInicio.get(inicio) ?? null,
       })
    }
