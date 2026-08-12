@@ -23,7 +23,59 @@ interface ClaseResumen {
    inicio: string
    fin: string
    profesor: string | null
-   color: string | null
+   cancelada: boolean
+}
+
+// Una clase de varias horas (ej. 3 bloques de teoría seguidos) queda partida en una
+// `SesionParalelo`/`Reserva` por bloque (ver server/utils/reservasSesion.ts) — igual que en
+// /api/dashboard ("Mi día"), así que acá llega como varias entradas separadas por sala y
+// horario. Se fusionan en una sola por clase física (sala+asignatura+paralelo), extendiendo
+// el rango hasta el bloque contiguo siguiente. La contigüidad es por NÚMERO de bloque, no por
+// hora: entre dos bloques puede haber un recreo, y esa clase sigue "en curso" durante el
+// recreo — no corresponde mostrarla como terminada ni que la sala aparezca libre.
+interface ReservaCruda extends ClaseResumen {
+   asignaturaId: number
+   bloqueNumero: number | null
+}
+
+function fusionarBloquesContiguos(crudas: ReservaCruda[]): ClaseResumen[] {
+   const porClave = new Map<string, ReservaCruda[]>()
+   for (const r of crudas) {
+      const clave = `${r.salaCodigo}-${r.asignaturaId}-${r.paraleloCodigo}`
+      const lista = porClave.get(clave) ?? []
+      lista.push(r)
+      porClave.set(clave, lista)
+   }
+
+   const resultado: ClaseResumen[] = []
+   for (const lista of porClave.values()) {
+      const ordenada = [...lista].sort((a, b) => a.inicio.localeCompare(b.inicio))
+      let actual: ReservaCruda | null = null
+      for (const r of ordenada) {
+         // Solo se fusiona si ambos bloques se pudieron ubicar en la plantilla del semestre y
+         // son consecutivos (bloque N seguido del N+1). Si falta el bloque (no debería pasar,
+         // ver `bloquePorHoraInicio` más abajo) la entrada queda sola, sin fusionar.
+         if (
+            actual !== null &&
+            actual.bloqueNumero != null &&
+            r.bloqueNumero != null &&
+            actual.bloqueNumero + 1 === r.bloqueNumero &&
+            // Si solo un bloque de una clase de varias horas se cancela, no puede fundirse con
+            // el resto en una sola entrada: se perdería justo el dato de cuál bloque canceló.
+            actual.cancelada === r.cancelada
+         ) {
+            // Mismo criterio que `fusionarContiguas` en /reservas/imprimir: se extiende el
+            // tramo actual en vez de crear uno nuevo.
+            actual.fin = r.fin
+            actual.bloqueNumero = r.bloqueNumero
+         } else {
+            if (actual) resultado.push(actual)
+            actual = r
+         }
+      }
+      if (actual) resultado.push(actual)
+   }
+   return resultado
 }
 
 export default defineEventHandler(async (event) => {
@@ -54,6 +106,12 @@ export default defineEventHandler(async (event) => {
    const hoy = new Date(`${hoyISO}T00:00:00.000Z`)
    const ahoraHHMM = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`
 
+   // Plantilla de bloques del semestre vigente: hace falta para saber qué bloque (número) es
+   // cada reserva y así detectar bloques contiguos — ver `fusionarBloquesContiguos`.
+   const semestre = await prisma.semestre.findFirst({ where: { vigente: true } })
+   const bloques = semestre ? await prisma.bloque.findMany({ where: { semestreId: semestre.id } }) : []
+   const bloqueNumeroPorHoraInicio = new Map(bloques.map((b) => [aHora(b.inicio), b.numero]))
+
    const reservas = await prisma.reserva.findMany({
       where: { salaCodigo: { in: salaCodigos }, fecha: hoy, sesionParaleloId: { not: null } },
       include: {
@@ -73,8 +131,7 @@ export default defineEventHandler(async (event) => {
    // reserva por curso sobre la MISMA sala a la misma hora — es una sola clase física. Se
    // deduplica por sala+asignatura+paralelo+inicio, mismo criterio que /api/dashboard.
    const vistas = new Set<string>()
-   const enCurso: ClaseResumen[] = []
-   const proximas: ClaseResumen[] = []
+   const crudas: ReservaCruda[] = []
 
    for (const r of reservas) {
       const sesion = r.sesionParalelo
@@ -87,21 +144,27 @@ export default defineEventHandler(async (event) => {
       if (vistas.has(clave)) continue
       vistas.add(clave)
 
-      const resumen: ClaseResumen = {
+      crudas.push({
          id: r.id,
          salaCodigo: r.salaCodigo,
          carreraNombre: paralelo.asignaturaPlan.plan.carrera.nombre,
          asignaturaCodigo: paralelo.asignaturaPlan.asignatura.codigo,
+         asignaturaId: paralelo.asignaturaPlan.asignaturaId,
          asignaturaNombre: paralelo.asignaturaPlan.asignatura.nombre,
          paraleloCodigo: paralelo.codigo,
          inicio,
          fin,
          profesor: r.persona ? `${r.persona.nombre} ${r.persona.apellido}` : null,
-         color: paralelo.color,
-      }
+         cancelada: r.cancelada,
+         bloqueNumero: bloqueNumeroPorHoraInicio.get(inicio) ?? null,
+      })
+   }
 
-      if (inicio <= ahoraHHMM && fin > ahoraHHMM) enCurso.push(resumen)
-      else if (inicio > ahoraHHMM) proximas.push(resumen)
+   const enCurso: ClaseResumen[] = []
+   const proximas: ClaseResumen[] = []
+   for (const clase of fusionarBloquesContiguos(crudas)) {
+      if (clase.inicio <= ahoraHHMM && clase.fin > ahoraHHMM) enCurso.push(clase)
+      else if (clase.inicio > ahoraHHMM) proximas.push(clase)
    }
 
    const porInicioYSala = (a: ClaseResumen, b: ClaseResumen) =>
@@ -109,5 +172,21 @@ export default defineEventHandler(async (event) => {
    enCurso.sort(porInicioYSala)
    proximas.sort(porInicioYSala)
 
-   return { ...respuestaBase, hoy: hoyISO, enCurso, proximas }
+   // `proximasPorSala` acota cuántas próximas clases se listan por sala (null = todas las que
+   // queden hoy). "En curso" nunca se acota: a lo más hay una clase en curso por sala a la vez
+   // (una sala no puede tener dos clases superpuestas), así que no hace falta.
+   const proximasLimitadas =
+      pantalla.proximasPorSala == null
+         ? proximas
+         : (() => {
+              const contadorPorSala = new Map<string, number>()
+              return proximas.filter((clase) => {
+                 const cantidad = contadorPorSala.get(clase.salaCodigo) ?? 0
+                 if (cantidad >= pantalla.proximasPorSala!) return false
+                 contadorPorSala.set(clase.salaCodigo, cantidad + 1)
+                 return true
+              })
+           })()
+
+   return { ...respuestaBase, hoy: hoyISO, enCurso, proximas: proximasLimitadas }
 })

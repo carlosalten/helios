@@ -395,9 +395,16 @@ function claseCeldaDia(diaValor: number, franja: Franja) {
    return 'bg-default'
 }
 
+// Mismo rojo que usa el resto de la app para lo destructivo/urgente (--color-usm-red). Una
+// reserva cancelada lo usa siempre, sin importar el color de su tipo: tiene que distinguirse
+// de un vistazo, no leerse como "una reserva más".
+const COLOR_CANCELADA = '#C8102E'
+
 // Cada reserva toma el color de su tipo: borde sólido en el color y un fondo con el mismo
-// tono a baja opacidad (alpha "1A" ≈ 10%, agregado directo al hex de 6 dígitos).
+// tono a baja opacidad (alpha "1A" ≈ 10%, agregado directo al hex de 6 dígitos). Cancelada:
+// fondo más marcado (alpha "33" ≈ 20%) para que resalte incluso en un cuadro muy angosto.
 function estiloReserva(reserva: Reserva) {
+   if (reserva.cancelada) return { borderColor: COLOR_CANCELADA, backgroundColor: `${COLOR_CANCELADA}33` }
    return { borderColor: reserva.tipoReserva.color, backgroundColor: `${reserva.tipoReserva.color}1A` }
 }
 // Posición del cuadro dentro de su cluster: si se solapa con otras reservas, cada una toma
@@ -412,9 +419,14 @@ function estiloPosicion(rp: ReservaPosicionada) {
    }
 }
 // Badge del tipo dentro del cuadro: mismo color del tipo, pero como texto sobre un fondo más
-// tenue (alpha "26" ≈ 15%) para que se lea sobre el fondo ya teñido del cuadro.
+// tenue (alpha "26" ≈ 15%) para que se lea sobre el fondo ya teñido del cuadro. Cancelada:
+// reemplaza el badge de tipo por uno "Cancelada" en rojo, siempre.
 function estiloBadgeTipo(reserva: Reserva) {
+   if (reserva.cancelada) return { backgroundColor: `${COLOR_CANCELADA}26`, color: COLOR_CANCELADA }
    return { backgroundColor: `${reserva.tipoReserva.color}26`, color: reserva.tipoReserva.color }
+}
+function textoBadgeTipo(reserva: Reserva) {
+   return reserva.cancelada ? 'Cancelada' : reserva.tipoReserva.nombre
 }
 function horaConSufijo(horaISO: string) {
    return `${horaDeISO(horaISO)} hrs.`
@@ -529,6 +541,29 @@ const confirmBorrarSerieMostrar = ref(false)
 function abrirDetalle(reserva: Reserva) {
    reservaSeleccionada.value = reserva
    modalDetalleMostrar.value = true
+}
+
+/* ── Cancelar / reactivar reserva ─────────────────────────────────────────
+   A diferencia de borrar, no elimina la fila: solo alterna `cancelada`. Solo afecta esta
+   ocurrencia puntual — cancelar una reserva recurrente no toca el resto de la serie. */
+const cancelando = ref(false)
+
+async function alternarCancelada(reserva: Reserva) {
+   cancelando.value = true
+   try {
+      await $fetch(`/api/reservas/${reserva.id}/cancelar`, { method: 'PATCH' })
+      await refrescarReservas()
+      toast.add({
+         title: reserva.cancelada ? 'Reserva reactivada' : 'Reserva cancelada',
+         color: 'success',
+         icon: 'i-lucide-check-circle',
+      })
+   } catch (e: unknown) {
+      const mensaje = (e as { data?: { message?: string } }).data?.message ?? 'Error al actualizar la reserva'
+      toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
+   } finally {
+      cancelando.value = false
+   }
 }
 
 function abrirConfirmBorrar(reserva: Reserva) {
@@ -801,6 +836,11 @@ const itemsMenuContextual = computed(() => {
       if (puedeModificar) {
          gestion.push({ label: 'Editar reserva', icon: 'i-lucide-pen', onSelect: () => abrirEditar(reserva) })
          gestion.push({
+            label: reserva.cancelada ? 'Reactivar reserva' : 'Cancelar reserva',
+            icon: reserva.cancelada ? 'i-lucide-rotate-ccw' : 'i-lucide-ban',
+            onSelect: () => alternarCancelada(reserva),
+         })
+         gestion.push({
             label: 'Borrar reserva',
             icon: 'i-lucide-trash-2',
             onSelect: () => abrirConfirmBorrar(reserva),
@@ -856,7 +896,14 @@ interface TramoImpresion {
 // cada bloque de una clase es una sesión distinta y por lo tanto una reserva distinta, así que
 // una clase de cuatro bloques llega acá como cuatro reservas idénticas seguidas.
 function mismaActividad(a: Reserva, b: Reserva) {
-   return a.titulo === b.titulo && a.tipoReservaId === b.tipoReservaId && a.personaId === b.personaId
+   return (
+      a.titulo === b.titulo &&
+      a.tipoReservaId === b.tipoReservaId &&
+      a.personaId === b.personaId &&
+      // Si solo un bloque de una clase de varias horas se cancela, no puede fundirse con el
+      // resto en un solo recuadro: se perdería justo el dato de cuál bloque es el cancelado.
+      a.cancelada === b.cancelada
+   )
 }
 
 // Fusiona los tramos de la misma actividad que caen en filas consecutivas, para que en el papel
@@ -967,6 +1014,7 @@ function profesorDe(reserva: Reserva) {
 // se toma uno de la misma paleta a partir de su identificador: no es aleatorio, el mismo
 // paralelo sale siempre del mismo color, así el reporte no cambia entre impresiones.
 function colorImpresion(reserva: Reserva) {
+   if (reserva.cancelada) return COLOR_CANCELADA
    if (!esClase(reserva)) return reserva.tipoReserva.color
    const paralelo = reserva.sesionParalelo?.paralelo
    if (paralelo?.color) return paralelo.color
@@ -1270,16 +1318,22 @@ watch(editandoAlgo, async (ocupado) => {
                                           @dragstart="iniciarArrastre($event, rp.reserva)"
                                           @dragend="terminarArrastre"
                                        >
-                                          <div class="truncate">
+                                          <div class="flex items-start justify-between gap-1">
                                              <span
-                                                class="inline-block truncate rounded-full px-1.5 py-0.5 text-[9.5px] leading-none font-medium"
+                                                class="inline-block min-w-0 truncate rounded-full px-1.5 py-0.5 text-[9.5px] leading-none font-medium"
                                                 :style="estiloBadgeTipo(rp.reserva)"
                                              >
-                                                {{ rp.reserva.tipoReserva.nombre }}
+                                                {{ textoBadgeTipo(rp.reserva) }}
+                                             </span>
+                                             <span
+                                                class="shrink-0 text-[9.5px] leading-none font-semibold whitespace-nowrap"
+                                             >
+                                                {{ horaDeISO(rp.reserva.inicio) }}–{{ horaDeISO(rp.reserva.fin) }}
                                              </span>
                                           </div>
                                           <span
                                              class="inline-flex min-w-0 items-center gap-1 truncate text-xs font-bold"
+                                             :class="rp.reserva.cancelada ? 'line-through opacity-70' : ''"
                                           >
                                              <UIcon
                                                 v-if="rp.reserva.serieId"
@@ -1308,9 +1362,6 @@ watch(editandoAlgo, async (ocupado) => {
                                                 }}
                                              </div>
                                           </template>
-                                          <div class="mt-2 truncate">
-                                             {{ horaConSufijo(rp.reserva.inicio) }}–{{ horaConSufijo(rp.reserva.fin) }}
-                                          </div>
                                        </div>
                                     </div>
                                  </td>
@@ -1437,6 +1488,13 @@ watch(editandoAlgo, async (ocupado) => {
                         <UIcon name="i-lucide-printer-x" class="size-3" />
                         No se imprime
                      </span>
+                     <span
+                        v-if="reservaSeleccionada.cancelada"
+                        class="inline-flex shrink-0 items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-xs font-normal text-error"
+                     >
+                        <UIcon name="i-lucide-ban" class="size-3" />
+                        Cancelada
+                     </span>
                   </p>
                </div>
                <div v-if="reservaSeleccionada.sesionParalelo">
@@ -1507,6 +1565,16 @@ watch(editandoAlgo, async (ocupado) => {
                @click="abrirEditar(reservaSeleccionada!)"
             >
                Editar
+            </UButton>
+            <UButton
+               v-if="reservaSeleccionada && puedeModificarReserva(reservaSeleccionada)"
+               color="warning"
+               variant="subtle"
+               :icon="reservaSeleccionada.cancelada ? 'i-lucide-rotate-ccw' : 'i-lucide-ban'"
+               :loading="cancelando"
+               @click="alternarCancelada(reservaSeleccionada!)"
+            >
+               {{ reservaSeleccionada.cancelada ? 'Reactivar reserva' : 'Cancelar reserva' }}
             </UButton>
             <UButton
                v-if="reservaSeleccionada && puedeModificarReserva(reservaSeleccionada)"
@@ -1770,7 +1838,15 @@ watch(editandoAlgo, async (ocupado) => {
                            :key="entrada.reserva.id"
                            class="leading-tight not-last:mb-1 not-last:border-b not-last:border-dashed not-last:border-[#d4d4d4] not-last:pb-1"
                         >
-                           <p class="font-semibold wrap-break-word text-black">{{ entrada.reserva.titulo }}</p>
+                           <p v-if="entrada.reserva.cancelada" class="font-bold wrap-break-word text-black">
+                              CANCELADA
+                           </p>
+                           <p
+                              class="font-semibold wrap-break-word text-black"
+                              :class="entrada.reserva.cancelada ? 'line-through' : ''"
+                           >
+                              {{ entrada.reserva.titulo }}
+                           </p>
                            <template v-if="esClase(entrada.reserva)">
                               <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-black">
                                  {{ entrada.reserva.sesionParalelo.paralelo.asignaturaPlan.asignatura.nombre }}

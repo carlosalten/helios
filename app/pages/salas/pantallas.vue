@@ -40,9 +40,16 @@ const columnas: TableColumn<PantallaPublica>[] = [
    { accessorKey: 'codigo', header: 'Código', size: 100 },
    { id: 'salas', header: 'Salas', size: 90 },
    { accessorKey: 'segundosPorSlide', header: 'Segundos por slide', size: 140 },
+   { id: 'proximasPorSala', header: 'Próximas por sala', size: 140 },
    { id: 'url', header: 'URL pública' },
    { id: 'acciones', header: '', size: 110 },
 ]
+
+// "Todas" (sin límite) se guarda como `null` — mismo criterio en el backend
+// (server/api/pantallas/publico/[codigo].get.ts).
+function labelProximasPorSala(valor: number | null) {
+   return valor == null ? 'Todas' : String(valor)
+}
 
 /* ── Panel de detalle: salas de la pantalla seleccionada ──────────────────── */
 const pantallaSeleccionada = ref<PantallaPublica | null>(null)
@@ -98,7 +105,9 @@ async function toggleSala(salaCodigo: string) {
 
 /* ── Crear ───────────────────────────────────────────────── */
 const modalCrearMostrar = ref(false)
-const formCrear = reactive({ nombre: '', codigo: '', segundosPorSlide: 15 })
+// `proximasPorSala: null` por defecto ("Todas") — mismo default que la columna en BD, para que
+// una pantalla nueva se comporte igual que las existentes hasta que alguien la acote a mano.
+const formCrear = reactive({ nombre: '', codigo: '', segundosPorSlide: 15, proximasPorSala: null as number | null })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 
@@ -106,6 +115,7 @@ function abrirCrear() {
    formCrear.nombre = ''
    formCrear.codigo = ''
    formCrear.segundosPorSlide = 15
+   formCrear.proximasPorSala = null
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -120,6 +130,7 @@ async function guardar() {
             nombre: formCrear.nombre,
             codigo: formCrear.codigo,
             segundosPorSlide: Number(formCrear.segundosPorSlide),
+            proximasPorSala: formCrear.proximasPorSala,
          },
       })
       modalCrearMostrar.value = false
@@ -135,7 +146,7 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const pantallaEditar = ref<PantallaPublica | null>(null)
-const formEditar = reactive({ nombre: '', codigo: '', segundosPorSlide: 15 })
+const formEditar = reactive({ nombre: '', codigo: '', segundosPorSlide: 15, proximasPorSala: null as number | null })
 const errorEditar = ref<string | null>(null)
 
 function abrirEditar(pantalla: PantallaPublica) {
@@ -143,6 +154,7 @@ function abrirEditar(pantalla: PantallaPublica) {
    formEditar.nombre = pantalla.nombre
    formEditar.codigo = pantalla.codigo
    formEditar.segundosPorSlide = pantalla.segundosPorSlide
+   formEditar.proximasPorSala = pantalla.proximasPorSala
    errorEditar.value = null
    modalEditarMostrar.value = true
 }
@@ -158,6 +170,7 @@ async function guardarEditar() {
             nombre: formEditar.nombre,
             codigo: formEditar.codigo,
             segundosPorSlide: Number(formEditar.segundosPorSlide),
+            proximasPorSala: formEditar.proximasPorSala,
          },
       })
       modalEditarMostrar.value = false
@@ -168,6 +181,17 @@ async function guardarEditar() {
    } finally {
       guardando.value = false
    }
+}
+
+// Alterna entre "Todas" (null) y un número — usado por el checkbox "Todas" de ambos
+// formularios. Al desmarcarlo, arranca en 1 (no en el último valor, que ya se perdió al
+// guardar null). `UCheckbox` puede emitir 'indeterminate' además de boolean; acá no se usa ese
+// estado, así que solo `true` cuenta como "marcado".
+function alternarTodasCrear(todas: boolean | 'indeterminate') {
+   formCrear.proximasPorSala = todas === true ? null : 1
+}
+function alternarTodasEditar(todas: boolean | 'indeterminate') {
+   formEditar.proximasPorSala = todas === true ? null : 1
 }
 
 /* ── Eliminar ────────────────────────────────────────────── */
@@ -234,6 +258,11 @@ async function confirmarEliminar() {
                >
                   <template #salas-cell="{ row }">
                      <UBadge variant="subtle" color="neutral">{{ row.original.salas.length }}</UBadge>
+                  </template>
+                  <template #proximasPorSala-cell="{ row }">
+                     <UBadge variant="subtle" color="neutral">
+                        {{ labelProximasPorSala(row.original.proximasPorSala) }}
+                     </UBadge>
                   </template>
                   <template #url-cell="{ row }">
                      <div class="flex items-center gap-1">
@@ -384,6 +413,29 @@ async function confirmarEliminar() {
                      @update:model-value="formCrear.segundosPorSlide = Number($event)"
                   />
                </UFormField>
+               <UFormField
+                  label="Próximas clases por sala"
+                  name="proximasPorSala"
+                  description="Cuántas próximas clases mostrar de cada sala. «Todas» muestra las que queden por comenzar en el resto del día."
+               >
+                  <div class="flex items-center gap-3">
+                     <UInput
+                        :model-value="formCrear.proximasPorSala === null ? '' : String(formCrear.proximasPorSala)"
+                        type="number"
+                        min="1"
+                        max="50"
+                        :disabled="formCrear.proximasPorSala === null"
+                        class="w-full"
+                        @update:model-value="formCrear.proximasPorSala = Number($event) || 1"
+                     />
+                     <UCheckbox
+                        :model-value="formCrear.proximasPorSala === null"
+                        label="Todas"
+                        class="shrink-0"
+                        @update:model-value="alternarTodasCrear"
+                     />
+                  </div>
+               </UFormField>
             </UForm>
          </template>
          <template #footer>
@@ -424,6 +476,29 @@ async function confirmarEliminar() {
                      class="w-full"
                      @update:model-value="formEditar.segundosPorSlide = Number($event)"
                   />
+               </UFormField>
+               <UFormField
+                  label="Próximas clases por sala"
+                  name="proximasPorSala"
+                  description="Cuántas próximas clases mostrar de cada sala. «Todas» muestra las que queden por comenzar en el resto del día."
+               >
+                  <div class="flex items-center gap-3">
+                     <UInput
+                        :model-value="formEditar.proximasPorSala === null ? '' : String(formEditar.proximasPorSala)"
+                        type="number"
+                        min="1"
+                        max="50"
+                        :disabled="formEditar.proximasPorSala === null"
+                        class="w-full"
+                        @update:model-value="formEditar.proximasPorSala = Number($event) || 1"
+                     />
+                     <UCheckbox
+                        :model-value="formEditar.proximasPorSala === null"
+                        label="Todas"
+                        class="shrink-0"
+                        @update:model-value="alternarTodasEditar"
+                     />
+                  </div>
                </UFormField>
             </UForm>
          </template>

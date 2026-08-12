@@ -19,6 +19,9 @@ export const crearPantallaPublicaSchema = z.object({
       .int()
       .min(3, 'Mínimo 3 segundos')
       .max(300, 'Máximo 300 segundos'),
+   // Cuántas próximas clases mostrar por sala; `null` = todas las que queden por comenzar hoy
+   // (opción "Todas" del formulario).
+   proximasPorSala: z.number({ error: 'Debe ser un número' }).int().min(1, 'Mínimo 1').max(50, 'Máximo 50').nullable(),
 })
 
 export const editarPantallaPublicaSchema = crearPantallaPublicaSchema

@@ -65,6 +65,10 @@ export interface Reserva {
    serieId: string | null
    // Si la reserva aparece en la vista impresa de /reservas/horario.
    imprimir: boolean
+   // Cancelada: no se borra (sigue tomando la sala en la BD), pero se destaca en rojo y con la
+   // etiqueta "Cancelada" en vez de mostrarse como una reserva normal. Solo afecta esta
+   // ocurrencia puntual, nunca la serie recurrente completa.
+   cancelada: boolean
    sala: { codigo: string; capacidad: number }
    persona: { id: number; nombre: string; apellido: string } | null
    tipoReserva: TipoReserva

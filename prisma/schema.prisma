@@ -429,6 +429,11 @@ model PantallaPublica {
   codigo           String @unique @db.VarChar(20)
   // Segundos que cada sala permanece en pantalla antes de pasar a la siguiente.
   segundosPorSlide Int    @default(15) @map("segundos_por_slide")
+  // Cuántas próximas clases se muestran por sala en la pantalla pública. Nulo = todas las que
+  // queden por comenzar hoy (opción "Todas" en /salas/pantallas) — es también el valor con el
+  // que quedan las pantallas ya creadas al agregar esta columna, para no cambiarles el
+  // comportamiento actual.
+  proximasPorSala  Int?   @map("proximas_por_sala")
 
   salas PantallaPublicaSala[]
 
@@ -484,6 +489,12 @@ model Reserva {
   // en false para reservas que se quieren ver en pantalla pero no en el reporte en papel (p.
   // ej. bloqueos internos de mantenimiento).
   imprimir         Boolean  @default(true)
+  // Reserva cancelada: a diferencia de borrarla, queda visible (destacada en rojo) en
+  // /reservas/horario y en la pantalla pública — sirve para avisar que una clase puntual no se
+  // dicta ese día sin perder el registro de que la sala estaba tomada. No aplica a la serie
+  // completa de una reserva recurrente, solo a esta ocurrencia — ver
+  // server/api/reservas/[id]/cancelar.patch.ts.
+  cancelada        Boolean  @default(false)
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

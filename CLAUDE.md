@@ -96,7 +96,9 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 
 > Estas constraints se crearon con migraciones SQL a mano y **no** están representadas en `schema.prisma` (Prisma no modela CHECK/EXCLUDE). Un `prisma migrate reset` las reconstruye porque siguen en `prisma/migrations/`, pero `prisma migrate diff` contra el datamodel las reporta como "drift" esperado.
 
-> `Reserva` **permite intencionalmente** horario solapado (no existe una constraint `reserva_sin_solapamiento`): en `/reservas/horario`, las reservas que se solapan en el tiempo para una misma sala se agrupan en columnas una al lado de la otra en vez de rechazarse. `Reserva` tampoco tiene campo de estado: cancelar una reserva borra la fila (`DELETE /api/reservas/:id`), no la marca como cancelada.
+> `Reserva` **permite intencionalmente** horario solapado (no existe una constraint `reserva_sin_solapamiento`): en `/reservas/horario`, las reservas que se solapan en el tiempo para una misma sala se agrupan en columnas una al lado de la otra en vez de rechazarse.
+
+> `Reserva.cancelada` (`PATCH /api/reservas/:id/cancelar`) marca una ocurrencia puntual como cancelada **sin borrar la fila** — sigue tomando la sala en la BD, pero se destaca en rojo (`#C8102E`) en `/reservas/horario` (grilla interactiva e impresión) y en la pantalla pública (`/pantallas/<codigo>`, con la etiqueta "Cancelada"). Solo afecta esa ocurrencia: no tiene el flujo "esta y las siguientes" que sí tienen editar/borrar — cancelar una serie recurrente completa es ocurrencia por ocurrencia. Borrar (`DELETE /api/reservas/:id`) sigue siendo una operación aparte, que sí elimina la fila.
 
 ## Backend — API Nitro
 

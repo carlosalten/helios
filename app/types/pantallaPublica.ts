@@ -5,6 +5,9 @@ export interface PantallaPublica {
    nombre: string
    codigo: string
    segundosPorSlide: number
+   // Cuántas próximas clases se muestran por sala en la pantalla pública; `null` = todas las
+   // que queden por comenzar hoy.
+   proximasPorSala: number | null
    salas: Sala[]
 }
 
@@ -22,7 +25,7 @@ export interface ClasePantalla {
    inicio: string
    fin: string
    profesor: string | null
-   color: string | null
+   cancelada: boolean
 }
 
 export interface DatosPantallaPublica {
