@@ -13,17 +13,25 @@ const [{ data: estudiantes, status, refresh }, { data: procesos }, { data: grupo
 const { puedeCrear, puedeEditar, puedeBorrar } = usePermiso('/titulaciones/estudiantes')
 
 const busqueda = ref('')
+const procesoFiltro = ref<number | '__todos__'>('__todos__')
+
 const estudiantesFiltrados = computed(() => {
-   if (!busqueda.value.trim()) return estudiantes.value ?? []
-   const q = normalizarTexto(busqueda.value)
-   return (estudiantes.value ?? []).filter(
-      (e) =>
-         normalizarTexto(e.nombres).includes(q) ||
-         normalizarTexto(e.apellidoPaterno).includes(q) ||
-         normalizarTexto(e.apellidoMaterno).includes(q) ||
-         normalizarTexto(e.email).includes(q) ||
-         normalizarTexto(e.run).includes(q)
-   )
+   let lista = estudiantes.value ?? []
+   if (procesoFiltro.value !== '__todos__') {
+      lista = lista.filter((e) => e.procesoId === procesoFiltro.value)
+   }
+   if (busqueda.value.trim()) {
+      const q = normalizarTexto(busqueda.value)
+      lista = lista.filter(
+         (e) =>
+            normalizarTexto(e.nombres).includes(q) ||
+            normalizarTexto(e.apellidoPaterno).includes(q) ||
+            normalizarTexto(e.apellidoMaterno).includes(q) ||
+            normalizarTexto(e.email).includes(q) ||
+            normalizarTexto(e.run).includes(q)
+      )
+   }
+   return lista
 })
 
 const { paginaActual, itemsPagina: estudiantesPagina, porPagina } = usePaginacion(estudiantesFiltrados)
@@ -39,6 +47,10 @@ const columnas: TableColumn<TtEstudiante>[] = [
 ]
 
 const itemsProceso = computed(() => (procesos.value ?? []).map((p) => ({ label: String(p.anio), value: p.id })))
+const itemsProcesoFiltro = computed(() => [
+   { label: 'Todos los procesos', value: '__todos__' as const },
+   ...itemsProceso.value,
+])
 // Sentinel 0 = "Sin grupo" (ningún id autoincrement real es 0): se convierte a null antes de
 // mandarlo al backend.
 const itemsGrupo = computed(() => [
@@ -356,6 +368,7 @@ async function procesarCargaMasiva() {
             placeholder="Buscar por nombre, email o RUN…"
             class="sm:w-72"
          />
+         <USelect v-model="procesoFiltro" :items="itemsProcesoFiltro" value-key="value" class="sm:w-52" />
          <span class="text-sm text-usm-text-muted dark:text-slate-400">
             {{ estudiantesFiltrados.length }} estudiante{{ estudiantesFiltrados.length !== 1 ? 's' : '' }}
          </span>

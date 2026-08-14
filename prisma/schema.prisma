@@ -552,11 +552,16 @@ model TtProceso {
 model TtGrupo {
   id        Int    @id @default(autoincrement())
   nombre    String @db.VarChar(50)
+  // Constraint `tt_grupo_numero_positivo` en BD (>= 1) y unique compuesto con procesoId acá
+  // abajo: no se puede repetir el número dentro del mismo proceso, pero sí entre procesos
+  // distintos (cada proceso numera sus propios grupos desde 1).
+  numero    Int
   procesoId Int    @map("proceso_id")
 
   proceso     TtProceso      @relation(fields: [procesoId], references: [id])
   estudiantes TtEstudiante[]
 
+  @@unique([procesoId, numero])
   @@index([procesoId])
   @@map("tt_grupo")
 }
@@ -623,7 +628,7 @@ model TtLineaInvestigacionProfesor {
 // el modelo `Rol` de acceso al sistema.
 model TtRol {
   id          Int     @id @default(autoincrement())
-  nombre      String  @db.VarChar(30)
+  nombre      String  @db.VarChar(100)
   descripcion String? @db.VarChar(200)
   activo      Boolean @default(true)
 

@@ -89,6 +89,7 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 - **`asignatura_plan_semestre_positivo`** — en `asignatura_plan`, `semestre >= 1`.
 - **`plan_cantidad_semestres_rango`** — en `plan`, `cantidad_semestres` entre 4 y 12 (default 4).
 - **`curso_numero_positivo`** — en `curso`, `numero >= 1`.
+- **`tt_grupo_numero_positivo`** — en `tt_grupo`, `numero >= 1`. Además, `numero` es único junto con `proceso_id` (`tt_grupo_proceso_id_numero_key`): no se puede repetir dentro del mismo proceso, pero sí entre procesos distintos.
 - **`curso_numero_semestre_rango`** — en `curso`, `numero_semestre` entre 1 y 12.
 - **`paralelo_cupo_rango`** — en `paralelo`, `cupo` entre 0 y 100.
 - **`feriado_horas_validas`** — en `feriado`, `hora_inicio`/`hora_termino` van ambos `null` (feriado de día completo) o ambos con valor y `hora_termino > hora_inicio` (feriado parcial).

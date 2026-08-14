@@ -34,6 +34,11 @@ export const crearTtProcesoSchema = z.object({
 
 export const crearTtGrupoSchema = z.object({
    nombre: nombreSchema('El nombre es requerido', 50),
+   // Único dentro del mismo proceso — se valida en el endpoint (ver server/api/titulaciones/grupos).
+   numero: z
+      .number({ error: 'El número es requerido' })
+      .int('Debe ser un número entero')
+      .min(1, 'Debe ser mayor o igual a 1'),
    procesoId: z.number({ error: 'El proceso es requerido' }).int(),
 })
 
@@ -50,7 +55,7 @@ export const crearTtLineaInvestigacionSchema = z.object({
 // ============================================================
 
 export const crearTtRolSchema = z.object({
-   nombre: nombreSchema('El nombre es requerido', 30),
+   nombre: nombreSchema('El nombre es requerido', 100),
    // Opcional: un string vacío se guarda como nulo, no como cadena vacía (mismo criterio que
    // Asignatura.nombreCorto).
    descripcion: z

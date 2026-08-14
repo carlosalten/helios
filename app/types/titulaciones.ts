@@ -9,6 +9,7 @@ export interface TtProceso {
 export interface TtGrupo {
    id: number
    nombre: string
+   numero: number
    procesoId: number
    proceso: TtProceso
 }
