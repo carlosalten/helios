@@ -65,6 +65,11 @@ model Persona {
   // con qué color. Se cambia en /cuenta/preferencias.
   mostrarTopesEspejo Boolean         @default(true) @map("mostrar_topes_espejo")
   colorTopesEspejo   String          @default("#06B6D4") @map("color_topes_espejo") @db.VarChar(7)
+  // Nulo: sin emoji asignado. Un solo emoji (posiblemente una secuencia ZWJ de varios
+  // codepoints — familia, tono de piel, etc.) elegido de
+  // https://unicode.org/emoji/charts/full-emoji-list.html. Se muestra flotando sobre el
+  // círculo de iniciales en el navbar (app/layouts/default.vue).
+  emoji              String?         @db.VarChar(32)
 
   rol Rol @relation(fields: [rolId], references: [id])
 
@@ -547,11 +552,16 @@ model TtProceso {
 model TtGrupo {
   id        Int    @id @default(autoincrement())
   nombre    String @db.VarChar(50)
+  // Constraint `tt_grupo_numero_positivo` en BD (>= 1) y unique compuesto con procesoId acá
+  // abajo: no se puede repetir el número dentro del mismo proceso, pero sí entre procesos
+  // distintos (cada proceso numera sus propios grupos desde 1).
+  numero    Int
   procesoId Int    @map("proceso_id")
 
   proceso     TtProceso      @relation(fields: [procesoId], references: [id])
   estudiantes TtEstudiante[]
 
+  @@unique([procesoId, numero])
   @@index([procesoId])
   @@map("tt_grupo")
 }
@@ -618,7 +628,7 @@ model TtLineaInvestigacionProfesor {
 // el modelo `Rol` de acceso al sistema.
 model TtRol {
   id          Int     @id @default(autoincrement())
-  nombre      String  @db.VarChar(30)
+  nombre      String  @db.VarChar(100)
   descripcion String? @db.VarChar(200)
   activo      Boolean @default(true)
 

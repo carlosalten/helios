@@ -22,11 +22,15 @@ const modalCrearMostrar = ref(false)
 const formCrear = reactive({ nombre: '', descripcion: '', activo: true })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
-const errorGuardarNombre = computed(() => (errorGuardar.value?.includes('nombre') ? errorGuardar.value : undefined))
-// Cualquier error que no mencione "nombre" (p. ej. "Máximo 30 caracteres", que no repite el
-// nombre del campo) cae acá — así ningún mensaje del servidor queda sin mostrarse en el modal.
+// El servidor indica en `data.campo` cuál de los dos falló (ver crearTtRolSchema en el server) —
+// nunca se adivina a partir del texto del mensaje, porque mensajes como "Máximo 100 caracteres"
+// no mencionan el nombre del campo y aplican por igual a nombre y a descripción.
+const errorGuardarCampo = ref<string | undefined>(undefined)
+const errorGuardarNombre = computed(() =>
+   errorGuardarCampo.value === 'nombre' ? (errorGuardar.value ?? undefined) : undefined
+)
 const errorGuardarDescripcion = computed(() =>
-   errorGuardar.value && !errorGuardarNombre.value ? errorGuardar.value : undefined
+   errorGuardarCampo.value === 'descripcion' ? (errorGuardar.value ?? undefined) : undefined
 )
 
 function abrirCrear() {
@@ -34,12 +38,14 @@ function abrirCrear() {
    formCrear.descripcion = ''
    formCrear.activo = true
    errorGuardar.value = null
+   errorGuardarCampo.value = undefined
    modalCrearMostrar.value = true
 }
 
 async function guardar() {
    guardando.value = true
    errorGuardar.value = null
+   errorGuardarCampo.value = undefined
    try {
       await $fetch('/api/titulaciones/roles', {
          method: 'POST',
@@ -49,7 +55,9 @@ async function guardar() {
       await refresh()
       toast.add({ title: 'Rol agregado', color: 'success', icon: 'i-lucide-check-circle' })
    } catch (e: unknown) {
-      errorGuardar.value = (e as { data?: { message?: string } }).data?.message ?? 'Error al guardar'
+      const error = e as { data?: { message?: string; data?: { campo?: string } } }
+      errorGuardar.value = error.data?.message ?? 'Error al guardar'
+      errorGuardarCampo.value = error.data?.data?.campo
    } finally {
       guardando.value = false
    }
@@ -60,10 +68,13 @@ const modalEditarMostrar = ref(false)
 const rolEditar = ref<TtRol | null>(null)
 const formEditar = reactive({ nombre: '', descripcion: '', activo: true })
 const errorEditar = ref<string | null>(null)
-const errorEditarNombre = computed(() => (errorEditar.value?.includes('nombre') ? errorEditar.value : undefined))
-// Ver comentario de errorGuardarDescripcion: cualquier error no atribuible al nombre cae acá.
+// Ver comentario de errorGuardarCampo: mismo criterio, campo indicado por el servidor.
+const errorEditarCampo = ref<string | undefined>(undefined)
+const errorEditarNombre = computed(() =>
+   errorEditarCampo.value === 'nombre' ? (errorEditar.value ?? undefined) : undefined
+)
 const errorEditarDescripcion = computed(() =>
-   errorEditar.value && !errorEditarNombre.value ? errorEditar.value : undefined
+   errorEditarCampo.value === 'descripcion' ? (errorEditar.value ?? undefined) : undefined
 )
 
 function abrirEditar(rol: TtRol) {
@@ -72,6 +83,7 @@ function abrirEditar(rol: TtRol) {
    formEditar.descripcion = rol.descripcion ?? ''
    formEditar.activo = rol.activo
    errorEditar.value = null
+   errorEditarCampo.value = undefined
    modalEditarMostrar.value = true
 }
 
@@ -79,6 +91,7 @@ async function guardarEditar() {
    if (!rolEditar.value) return
    guardando.value = true
    errorEditar.value = null
+   errorEditarCampo.value = undefined
    try {
       const url: string = `/api/titulaciones/roles/${rolEditar.value.id}`
       await $fetch(url, {
@@ -89,7 +102,9 @@ async function guardarEditar() {
       await refresh()
       toast.add({ title: 'Rol actualizado', color: 'success', icon: 'i-lucide-check-circle' })
    } catch (e: unknown) {
-      errorEditar.value = (e as { data?: { message?: string } }).data?.message ?? 'Error al guardar'
+      const error = e as { data?: { message?: string; data?: { campo?: string } } }
+      errorEditar.value = error.data?.message ?? 'Error al guardar'
+      errorEditarCampo.value = error.data?.data?.campo
    } finally {
       guardando.value = false
    }

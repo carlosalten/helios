@@ -15,6 +15,7 @@ const { paginaActual, itemsPagina: gruposPagina, porPagina } = usePaginacion(com
 
 const columnas: TableColumn<TtGrupo>[] = [
    { accessorKey: 'nombre', header: 'Nombre' },
+   { accessorKey: 'numero', header: 'Número', size: 90 },
    { id: 'proceso', header: 'Proceso', size: 120 },
    { id: 'acciones', header: '', size: 80 },
 ]
@@ -23,36 +24,48 @@ const itemsProceso = computed(() => (procesos.value ?? []).map((p) => ({ label: 
 
 /* ── Crear ───────────────────────────────────────────────── */
 const modalCrearMostrar = ref(false)
-const formCrear = reactive({ nombre: '', procesoId: 0 })
+const formCrear = reactive({ nombre: '', numero: 1, procesoId: 0 })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
-const errorGuardarNombre = computed(() => (errorGuardar.value?.includes('nombre') ? errorGuardar.value : undefined))
-// Cualquier error que no mencione "nombre" (p. ej. "Máximo 50 caracteres") cae acá — así ningún
-// mensaje del servidor queda sin mostrarse en el modal.
+// El servidor indica en `data.campo` cuál de los tres falló (ver crearTtGrupoSchema y los
+// endpoints en server/api/titulaciones/grupos) — nunca se adivina a partir del texto del
+// mensaje, porque mensajes como "Máximo 50 caracteres" no mencionan el campo.
+const errorGuardarCampo = ref<string | undefined>(undefined)
+const errorGuardarNombre = computed(() =>
+   errorGuardarCampo.value === 'nombre' ? (errorGuardar.value ?? undefined) : undefined
+)
+const errorGuardarNumero = computed(() =>
+   errorGuardarCampo.value === 'numero' ? (errorGuardar.value ?? undefined) : undefined
+)
 const errorGuardarProceso = computed(() =>
-   errorGuardar.value && !errorGuardarNombre.value ? errorGuardar.value : undefined
+   errorGuardarCampo.value === 'procesoId' ? (errorGuardar.value ?? undefined) : undefined
 )
 
 function abrirCrear() {
    formCrear.nombre = ''
+   formCrear.numero = 1
    formCrear.procesoId = procesos.value?.[0]?.id ?? 0
    errorGuardar.value = null
+   errorGuardarCampo.value = undefined
    modalCrearMostrar.value = true
 }
 
 async function guardar() {
    guardando.value = true
    errorGuardar.value = null
+   errorGuardarCampo.value = undefined
    try {
       await $fetch('/api/titulaciones/grupos', {
          method: 'POST',
-         body: { nombre: formCrear.nombre, procesoId: Number(formCrear.procesoId) },
+         body: { nombre: formCrear.nombre, numero: Number(formCrear.numero), procesoId: Number(formCrear.procesoId) },
       })
       modalCrearMostrar.value = false
       await refresh()
       toast.add({ title: 'Grupo agregado', color: 'success', icon: 'i-lucide-check-circle' })
    } catch (e: unknown) {
-      errorGuardar.value = (e as { data?: { message?: string } }).data?.message ?? 'Error al guardar'
+      const error = e as { data?: { message?: string; data?: { campo?: string } } }
+      errorGuardar.value = error.data?.message ?? 'Error al guardar'
+      errorGuardarCampo.value = error.data?.data?.campo
    } finally {
       guardando.value = false
    }
@@ -61,19 +74,27 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const grupoEditar = ref<TtGrupo | null>(null)
-const formEditar = reactive({ nombre: '', procesoId: 0 })
+const formEditar = reactive({ nombre: '', numero: 1, procesoId: 0 })
 const errorEditar = ref<string | null>(null)
-const errorEditarNombre = computed(() => (errorEditar.value?.includes('nombre') ? errorEditar.value : undefined))
-// Ver comentario de errorGuardarProceso: cualquier error no atribuible al nombre cae acá.
+// Ver comentario de errorGuardarCampo: mismo criterio, campo indicado por el servidor.
+const errorEditarCampo = ref<string | undefined>(undefined)
+const errorEditarNombre = computed(() =>
+   errorEditarCampo.value === 'nombre' ? (errorEditar.value ?? undefined) : undefined
+)
+const errorEditarNumero = computed(() =>
+   errorEditarCampo.value === 'numero' ? (errorEditar.value ?? undefined) : undefined
+)
 const errorEditarProceso = computed(() =>
-   errorEditar.value && !errorEditarNombre.value ? errorEditar.value : undefined
+   errorEditarCampo.value === 'procesoId' ? (errorEditar.value ?? undefined) : undefined
 )
 
 function abrirEditar(grupo: TtGrupo) {
    grupoEditar.value = grupo
    formEditar.nombre = grupo.nombre
+   formEditar.numero = grupo.numero
    formEditar.procesoId = grupo.procesoId
    errorEditar.value = null
+   errorEditarCampo.value = undefined
    modalEditarMostrar.value = true
 }
 
@@ -81,17 +102,24 @@ async function guardarEditar() {
    if (!grupoEditar.value) return
    guardando.value = true
    errorEditar.value = null
+   errorEditarCampo.value = undefined
    try {
       const url: string = `/api/titulaciones/grupos/${grupoEditar.value.id}`
       await $fetch(url, {
          method: 'PATCH',
-         body: { nombre: formEditar.nombre, procesoId: Number(formEditar.procesoId) },
+         body: {
+            nombre: formEditar.nombre,
+            numero: Number(formEditar.numero),
+            procesoId: Number(formEditar.procesoId),
+         },
       })
       modalEditarMostrar.value = false
       await refresh()
       toast.add({ title: 'Grupo actualizado', color: 'success', icon: 'i-lucide-check-circle' })
    } catch (e: unknown) {
-      errorEditar.value = (e as { data?: { message?: string } }).data?.message ?? 'Error al guardar'
+      const error = e as { data?: { message?: string; data?: { campo?: string } } }
+      errorEditar.value = error.data?.message ?? 'Error al guardar'
+      errorEditarCampo.value = error.data?.data?.campo
    } finally {
       guardando.value = false
    }
@@ -192,6 +220,9 @@ async function confirmarEliminar() {
                <UFormField label="Nombre" name="nombre" :error="errorGuardarNombre">
                   <UInput v-model="formCrear.nombre" placeholder="Grupo 1…" class="w-full" />
                </UFormField>
+               <UFormField label="Número" name="numero" :error="errorGuardarNumero">
+                  <UInput v-model.number="formCrear.numero" type="number" :min="1" :step="1" class="w-full" />
+               </UFormField>
                <UFormField label="Proceso" name="procesoId" :error="errorGuardarProceso">
                   <USelectMenu v-model="formCrear.procesoId" :items="itemsProceso" value-key="value" class="w-full" />
                </UFormField>
@@ -218,6 +249,9 @@ async function confirmarEliminar() {
             <UForm id="form-grupo-editar" :state="formEditar" class="space-y-4" @submit="guardarEditar">
                <UFormField label="Nombre" name="nombre" :error="errorEditarNombre">
                   <UInput v-model="formEditar.nombre" class="w-full" />
+               </UFormField>
+               <UFormField label="Número" name="numero" :error="errorEditarNumero">
+                  <UInput v-model.number="formEditar.numero" type="number" :min="1" :step="1" class="w-full" />
                </UFormField>
                <UFormField label="Proceso" name="procesoId" :error="errorEditarProceso">
                   <USelectMenu v-model="formEditar.procesoId" :items="itemsProceso" value-key="value" class="w-full" />
