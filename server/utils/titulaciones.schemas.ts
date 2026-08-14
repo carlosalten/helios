@@ -33,7 +33,7 @@ export const crearTtProcesoSchema = z.object({
 // ============================================================
 
 export const crearTtGrupoSchema = z.object({
-   nombre: nombreSchema('El nombre es requerido', 50),
+   nombre: nombreSchema('El nombre es requerido', 100),
    // Único dentro del mismo proceso — se valida en el endpoint (ver server/api/titulaciones/grupos).
    numero: z
       .number({ error: 'El número es requerido' })
