@@ -36,7 +36,7 @@ const esPersonal = computed(() => resumen.value?.alcance.modo === 'personal')
 // para los roles con responsabilidad sobre la malla de una carrera. El resto (Apoyo Docente,
 // Profesor, Funcionario, Externo) no gestiona esos datos, así que no aporta mostrárselo.
 const ROLES_PLANIFICACION = ['Administrador', 'Director Departamento', 'Jefe de Carrera']
-const puedeVerPlanificacion = computed(() => !!user.value && ROLES_PLANIFICACION.includes(user.value.rol))
+const puedeVerPlanificacion = computed(() => !!user.value?.rol && ROLES_PLANIFICACION.includes(user.value.rol))
 
 const opcionesModo = [
    { label: 'Todo el sistema', value: 'global' as const },
@@ -203,6 +203,7 @@ const { puedeVer: puedeVerHorario } = usePermiso('/horario')
 const { puedeVer: puedeVerCursos } = usePermiso('/cursos')
 const { puedeVer: puedeVerReservas } = usePermiso('/reservas/horario')
 const { puedeVer: puedeVerFeriados } = usePermiso('/feriados')
+const { puedeVer: puedeVerTopesHorario } = usePermiso('/reportes/topes-horario')
 
 function puedeVerRuta(ruta: string) {
    if (ruta === '/horario') return puedeVerHorario.value
@@ -429,9 +430,9 @@ function estiloPunto(color: string | null) {
                         </div>
                      </div>
 
-                     <!-- Topes: solo aparece la fila si hay alguno que resolver. -->
+                     <!-- Topes: solo aparece la fila si hay alguno que resolver y el rol puede ver el reporte. -->
                      <NuxtLink
-                        v-if="totalTopes"
+                        v-if="totalTopes && puedeVerTopesHorario"
                         to="/reportes/topes-horario"
                         class="mt-5 flex items-center gap-3 rounded-xl border border-usm-yellow-300 bg-usm-yellow-50 px-4 py-3 transition-colors hover:bg-usm-yellow-100 dark:border-usm-yellow-800 dark:bg-usm-yellow-950 dark:hover:bg-usm-yellow-900"
                      >

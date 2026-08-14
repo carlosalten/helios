@@ -5,7 +5,7 @@ export function usePermiso(ruta: string) {
 
    function tienePermiso(accion: string) {
       if (user.value?.rol === 'Administrador') return true
-      return user.value?.permisos.some((p) => p.ruta === ruta && p.acciones.includes(accion)) ?? false
+      return user.value?.permisos?.some((p) => p.ruta === ruta && p.acciones.includes(accion)) ?? false
    }
 
    return {

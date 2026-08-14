@@ -25,6 +25,8 @@ export const RUTAS_PERMISO = [
    '/planes',
    '/planes/asignacion',
    '/reportes/asignaturas-plan',
+   '/reportes/bloques-libres',
+   '/reportes/topes-horario',
    '/reportes/uso-salas',
    '/reservas/horario',
    '/reservas/imprimir',
@@ -35,6 +37,13 @@ export const RUTAS_PERMISO = [
    '/salas/pantallas',
    '/salas/tipos',
    '/semestres',
+   '/titulaciones/estudiantes',
+   '/titulaciones/grupos',
+   '/titulaciones/lineas-investigacion',
+   '/titulaciones/procesos',
+   '/titulaciones/profesores',
+   '/titulaciones/propuestas',
+   '/titulaciones/roles',
 ] as const
 
 const ACCIONES_PERMISO = ['ver', 'crear', 'editar', 'borrar', 'contrasena', 'cambiarrol', 'activar'] as const

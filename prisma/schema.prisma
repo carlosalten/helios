@@ -158,11 +158,14 @@ model Curso {
 }
 
 model Asignatura {
-  id              Int    @id @default(autoincrement())
-  codigo          String @unique @db.VarChar(20)
-  nombre          String @db.VarChar(100)
-  bloquesTeoria   Int    @map("bloques_teoria")
-  bloquesPractica Int    @map("bloques_practica")
+  id              Int     @id @default(autoincrement())
+  codigo          String  @unique @db.VarChar(20)
+  nombre          String  @db.VarChar(100)
+  // Nombre abreviado para espacios reducidos (ej. tarjetas de la pantalla pública). Nulo: usa
+  // `nombre` completo donde haga falta.
+  nombreCorto     String? @map("nombre_corto") @db.VarChar(50)
+  bloquesTeoria   Int     @map("bloques_teoria")
+  bloquesPractica Int     @map("bloques_practica")
 
   asignaturasPlan AsignaturaPlan[]
   // Las dos puntas de la misma relación simétrica (ver AsignaturaEquivalencia): para saber
@@ -458,12 +461,18 @@ model PantallaPublicaSala {
 // ============================================================
 
 model TipoReserva {
-  id       Int       @id @default(autoincrement())
-  nombre   String    @db.VarChar(30)
+  id                Int       @id @default(autoincrement())
+  nombre            String    @db.VarChar(30)
   // Hex de una paleta fija de 20 colores con nombre (ver COLORES_RESERVA en
   // app/types/reserva.ts): cada reserva de este tipo toma este color en /reservas/horario.
-  color    String    @db.VarChar(7)
-  reservas Reserva[]
+  color             String    @db.VarChar(7)
+  // Valor por defecto de Reserva.publica para una reserva nueva de este tipo: se usa al
+  // prellenar el formulario de nueva reserva en /reservas/horario y al generar las reservas
+  // de sala de una sesión de clases (ver regenerarReservaSesion en reservasSesion.ts y la
+  // carga masiva de horario en cargaMasiva.ts). Cambiar este valor no toca las reservas ya
+  // creadas de ese tipo, solo el default para las nuevas.
+  publicaPorDefecto Boolean   @default(true) @map("publica_por_defecto")
+  reservas          Reserva[]
 
   @@map("tipo_reserva")
 }
@@ -485,10 +494,11 @@ model Reserva {
   // (semanal); null en una reserva no recurrente. No hay un campo booleano "recurrente"
   // aparte: la recurrencia se sabe por si serieId es null o no.
   serieId          String?  @map("serie_id") @db.Uuid
-  // Si la reserva aparece en la vista impresa de /reservas/horario. Por defecto sí — se marca
-  // en false para reservas que se quieren ver en pantalla pero no en el reporte en papel (p.
-  // ej. bloqueos internos de mantenimiento).
-  imprimir         Boolean  @default(true)
+  // Si la reserva se muestra en vistas de cara al público: la vista impresa de
+  // /reservas/horario y la pantalla pública (/pantallas/<codigo>). Por defecto sí — se marca
+  // en false para reservas que deben tomar la sala en la BD pero no anunciarse (p. ej.
+  // bloqueos internos de mantenimiento).
+  publica          Boolean  @default(true)
   // Reserva cancelada: a diferencia de borrarla, queda visible (destacada en rojo) en
   // /reservas/horario y en la pantalla pública — sirve para avisar que una clase puntual no se
   // dicta ese día sin perder el registro de que la sala estaba tomada. No aplica a la serie
@@ -509,6 +519,189 @@ model Reserva {
   @@index([fecha])
   @@index([serieId])
   @@map("reserva")
+}
+
+// ============================================================
+// Trabajos de título (propuestas)
+// ============================================================
+//
+// Módulo para administrar propuestas de trabajo de título de estudiantes, separado del
+// login unificado de Persona: estudiantes y profesores de este módulo (`TtEstudiante`,
+// `TtProfesor`) son entidades propias, con su propia credencial — no reutilizan `Persona`.
+// Prefijo `Tt` en los modelos (tabla `tt_*`) para diferenciarlos del resto del dominio
+// académico y evitar choques de nombre (p. ej. `TtRol` es un catálogo de roles dentro de
+// una propuesta, sin relación con el `Rol` de acceso al sistema).
+
+model TtProceso {
+  id   Int @id @default(autoincrement())
+  // "año" en el diagrama original; sin tilde acá por consistencia con el resto del schema
+  // (identificadores en ASCII).
+  anio Int
+
+  estudiantes TtEstudiante[]
+  grupos      TtGrupo[]
+
+  @@map("tt_proceso")
+}
+
+model TtGrupo {
+  id        Int    @id @default(autoincrement())
+  nombre    String @db.VarChar(50)
+  procesoId Int    @map("proceso_id")
+
+  proceso     TtProceso      @relation(fields: [procesoId], references: [id])
+  estudiantes TtEstudiante[]
+
+  @@index([procesoId])
+  @@map("tt_grupo")
+}
+
+model TtEstudiante {
+  email           String @id @db.VarChar(50)
+  run             String @unique @db.VarChar(10)
+  password        String @db.VarChar(60)
+  nombres         String @db.VarChar(50)
+  apellidoPaterno String @map("apellido_paterno") @db.VarChar(50)
+  apellidoMaterno String @map("apellido_materno") @db.VarChar(50)
+  procesoId       Int    @map("proceso_id")
+  // Nulo: el estudiante todavía no está asignado a un grupo de trabajo.
+  grupoId         Int?   @map("grupo_id")
+
+  proceso    TtProceso     @relation(fields: [procesoId], references: [id])
+  grupo      TtGrupo?      @relation(fields: [grupoId], references: [id])
+  propuestas TtPropuesta[]
+
+  @@index([procesoId])
+  @@index([grupoId])
+  @@map("tt_estudiante")
+}
+
+model TtProfesor {
+  email          String  @id @db.VarChar(50)
+  run            String  @unique @db.VarChar(10)
+  nombre         String  @db.VarChar(30)
+  apellido       String  @db.VarChar(30)
+  esGuia         Boolean @map("es_guia")
+  esInvestigador Boolean @map("es_investigador")
+
+  comisiones          TtComision[]
+  lineasInvestigacion TtLineaInvestigacionProfesor[]
+
+  @@map("tt_profesor")
+}
+
+model TtLineaInvestigacion {
+  id     Int    @id @default(autoincrement())
+  nombre String @db.VarChar(50)
+
+  propuestas TtPropuesta[]
+  profesores TtLineaInvestigacionProfesor[]
+
+  @@map("tt_linea_investigacion")
+}
+
+// Profesores que trabajan en una línea de investigación — de qué líneas puede ser guía o
+// evaluador un profesor.
+model TtLineaInvestigacionProfesor {
+  lineaInvestigacionId Int    @map("linea_investigacion_id")
+  profesorEmail        String @map("profesor_email") @db.VarChar(50)
+
+  lineaInvestigacion TtLineaInvestigacion @relation(fields: [lineaInvestigacionId], references: [id])
+  profesor           TtProfesor           @relation(fields: [profesorEmail], references: [email])
+
+  @@id([lineaInvestigacionId, profesorEmail])
+  @@index([profesorEmail])
+  @@map("tt_linea_investigacion_profesor")
+}
+
+// Catálogo de roles dentro de una propuesta (p. ej. quién la presenta) — sin relación con
+// el modelo `Rol` de acceso al sistema.
+model TtRol {
+  id          Int     @id @default(autoincrement())
+  nombre      String  @db.VarChar(30)
+  descripcion String? @db.VarChar(200)
+  activo      Boolean @default(true)
+
+  propuestas TtPropuesta[]
+
+  @@map("tt_rol")
+}
+
+model TtPropuesta {
+  id                   Int      @id @default(autoincrement())
+  titulo               String   @db.VarChar(250)
+  fecha                DateTime
+  // 3 modalidades fijas ("Investigación" / "Tesina Feria de Software" / "Proyecto Propio"),
+  // validadas por enum en el endpoint (ver MODALIDADES_PROPUESTA en titulaciones.schemas.ts) —
+  // texto libre en la BD, igual que TipoReserva.nombre, no un enum de Postgres.
+  modalidad            String   @db.VarChar(30)
+  descripcion          String
+  // Solo se completan según la modalidad elegida: inv_* si es "Investigación", cla_* si es
+  // "Proyecto Propio" — nulos en cualquier otro caso (incluida "Tesina Feria de Software", que
+  // no tiene campos propios). Se valida en el endpoint, no acá (Prisma no modela CHECK
+  // condicionales — ver la sección de invariantes de BD en el CLAUDE.md raíz).
+  invMotivacion        String?  @map("inv_motivacion")
+  invExperiencia       String?  @map("inv_experiencia")
+  claProblema          String?  @map("cla_problema")
+  claObjetivo          String?  @map("cla_objetivo")
+  // Si la propuesta tiene cambios pendientes de revisión frente a la última versión evaluada.
+  hayCambios           Boolean  @default(false) @map("hay_cambios")
+  // Solo aplica a "Tesina Feria de Software" — nulo en cualquier otra modalidad.
+  rolId                Int?     @map("rol_id")
+  estudianteEmail      String   @map("estudiante_email") @db.VarChar(50)
+  // Solo aplica a "Investigación" — nulo en cualquier otra modalidad.
+  lineaInvestigacionId Int?     @map("linea_investigacion_id")
+
+  rol                TtRol?                @relation(fields: [rolId], references: [id])
+  estudiante         TtEstudiante          @relation(fields: [estudianteEmail], references: [email])
+  lineaInvestigacion TtLineaInvestigacion? @relation(fields: [lineaInvestigacionId], references: [id])
+  estados            TtEstado[]
+  comision           TtComision[]
+
+  @@index([rolId])
+  @@index([estudianteEmail])
+  @@index([lineaInvestigacionId])
+  @@map("tt_propuesta")
+}
+
+// Historial de estados de una propuesta (enviada, en revisión, aprobada, rechazada, …): una
+// fila por cambio de estado, no un solo campo `estado` en TtPropuesta, para conservar el
+// historial completo con fecha y comentario de cada transición.
+model TtEstado {
+  id             Int       @id @default(autoincrement())
+  fechaHora      DateTime  @map("fecha_hora")
+  // "Pendiente" / "Aceptada" / "Rechazada" / "Antecedentes solicitados" (ver
+  // ESTADOS_DECISION_PROPUESTA en titulaciones.schemas.ts) — "Antecedentes solicitados" (24
+  // caracteres) no entraba en el VarChar(20) original.
+  estado         String    @db.VarChar(30)
+  // Nulo: no toda transición de estado trae un comentario (p. ej. una automática).
+  comentario     String?
+  // Nulo = no visto. Se completa cuando el estudiante abre el detalle de la propuesta y ese
+  // estado todavía no tenía marca (ver POST /api/estudiante/propuestas/[id]/marcar-visto). El
+  // "Pendiente" que nace junto con la propuesta se marca visto de inmediato — el propio
+  // estudiante la acaba de crear, no es una novedad para él.
+  vistoFechaHora DateTime? @map("visto_fecha_hora")
+  propuestaId    Int       @map("propuesta_id")
+
+  propuesta TtPropuesta @relation(fields: [propuestaId], references: [id])
+
+  @@index([propuestaId])
+  @@map("tt_estado")
+}
+
+// Comisión evaluadora de una propuesta: qué profesores la integran y con qué rol (p. ej.
+// "Guía", "Presidente", "Revisor" — texto libre, no FK a TtRol).
+model TtComision {
+  propuestaId   Int    @map("propuesta_id")
+  profesorEmail String @map("profesor_email") @db.VarChar(50)
+  rol           String @db.VarChar(20)
+
+  propuesta TtPropuesta @relation(fields: [propuestaId], references: [id])
+  profesor  TtProfesor  @relation(fields: [profesorEmail], references: [email])
+
+  @@id([propuestaId, profesorEmail])
+  @@index([profesorEmail])
+  @@map("tt_comision")
 }
 
 // ============================================================

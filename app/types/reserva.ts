@@ -47,6 +47,9 @@ export interface TipoReserva {
    id: number
    nombre: string
    color: string
+   // Valor por defecto de Reserva.publica para una reserva nueva de este tipo: se usa para
+   // prellenar el campo "Reserva pública" en el formulario de nueva reserva.
+   publicaPorDefecto: boolean
 }
 
 export interface Reserva {
@@ -63,8 +66,9 @@ export interface Reserva {
    // Comparte serieId toda ocurrencia generada por la misma reserva recurrente (semanal);
    // null en una reserva no recurrente.
    serieId: string | null
-   // Si la reserva aparece en la vista impresa de /reservas/horario.
-   imprimir: boolean
+   // Si la reserva se muestra en vistas de cara al público: la vista impresa de
+   // /reservas/horario y la pantalla pública (/pantallas/<codigo>).
+   publica: boolean
    // Cancelada: no se borra (sigue tomando la sala en la BD), pero se destaca en rojo y con la
    // etiqueta "Cancelada" en vez de mostrarse como una reserva normal. Solo afecta esta
    // ocurrencia puntual, nunca la serie recurrente completa.
@@ -79,7 +83,8 @@ export interface Reserva {
          // Color del paralelo en la matriz de horario; nulo mientras no se le asigne uno.
          color: string | null
          asignaturaPlan: {
-            asignatura: { nombre: string }
+            // `nombreCorto` nulo: se muestra `nombre` completo — ver `nombreAsignaturaDe`.
+            asignatura: { nombre: string; nombreCorto: string | null }
             plan: { numero: number; carreraCodigo: number; carrera: { nombre: string; nombreCorto: string } }
          }
       }

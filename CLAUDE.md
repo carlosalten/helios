@@ -100,6 +100,8 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 
 > `Reserva.cancelada` (`PATCH /api/reservas/:id/cancelar`) marca una ocurrencia puntual como cancelada **sin borrar la fila** — sigue tomando la sala en la BD, pero se destaca en rojo (`#C8102E`) en `/reservas/horario` (grilla interactiva e impresión) y en la pantalla pública (`/pantallas/<codigo>`, con la etiqueta "Cancelada"). Solo afecta esa ocurrencia: no tiene el flujo "esta y las siguientes" que sí tienen editar/borrar — cancelar una serie recurrente completa es ocurrencia por ocurrencia. Borrar (`DELETE /api/reservas/:id`) sigue siendo una operación aparte, que sí elimina la fila.
 
+> `Reserva.publica` (default `true`) controla si la reserva se muestra en vistas de cara al público: la vista impresa de `/reservas/horario` y la pantalla pública (`/pantallas/<codigo>`). En `false` la reserva sigue tomando la sala en la BD y se ve igual que cualquier otra en la grilla interactiva de `/reservas/horario`, pero queda fuera del reporte en papel y de `/pantallas/<codigo>` — para bloqueos internos (p. ej. mantenimiento) que no corresponde anunciar.
+
 ## Backend — API Nitro
 
 - Rutas en `server/api/`.

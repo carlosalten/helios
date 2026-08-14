@@ -43,17 +43,22 @@
    --color-usm-blue-900: #00142a;
    --color-usm-blue-950: #000915;
 
-   --color-usm-green-50: #ecfff6;
-   --color-usm-green-100: #d3ffed;
-   --color-usm-green-200: #aaffdc;
-   --color-usm-green-300: #69ffc4;
-   --color-usm-green-400: #21ffa8;
-   --color-usm-green-500: #00f294;
-   --color-usm-green-600: #00ca7b;
-   --color-usm-green-700: #009e61;
-   --color-usm-green-800: #008452;
-   --color-usm-green-900: #026541;
-   --color-usm-green-950: #003925;
+   /* Escala reconstruida a partir de --color-usm-green (#008452, el verde institucional) en el
+      -500, igual que el resto de los colores de esta paleta (ver p. ej. --color-usm-blue-500 más
+      arriba, que coincide con --color-usm-blue). El -500 original (#00f294) era un verde neón sin
+      relación con la marca y con muy mal contraste como fondo de botón "solid" con texto blanco
+      (~1.5:1, muy por debajo del 4.5:1 de WCAG AA) — el nuevo -500 da ~4.75:1. */
+   --color-usm-green-50: #e2fff4;
+   --color-usm-green-100: #b6ffe3;
+   --color-usm-green-200: #7fffce;
+   --color-usm-green-300: #3dffb5;
+   --color-usm-green-400: #00fa9a;
+   --color-usm-green-500: #008452;
+   --color-usm-green-600: #006e44;
+   --color-usm-green-700: #005333;
+   --color-usm-green-800: #003a24;
+   --color-usm-green-900: #002115;
+   --color-usm-green-950: #00110a;
 
    --color-usm-purple-50: #fdf1ff;
    --color-usm-purple-100: #fae1ff;

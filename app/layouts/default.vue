@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const { user } = useUserSession()
+const { user, fetch: fetchSession } = useUserSession()
 const route = useRoute()
 const colorMode = useColorMode()
 const sidebarOpen = ref(false)
@@ -132,6 +132,22 @@ const gruposNav: NavItem[][] = [
    ],
    [
       {
+         to: '/titulaciones',
+         icon: 'i-lucide-award',
+         label: 'Titulaciones',
+         children: [
+            { to: '/titulaciones/procesos', label: 'Procesos' },
+            { to: '/titulaciones/estudiantes', label: 'Estudiantes' },
+            { to: '/titulaciones/grupos', label: 'Grupos' },
+            { to: '/titulaciones/lineas-investigacion', label: 'Líneas de investigación' },
+            { to: '/titulaciones/roles', label: 'Roles' },
+            { to: '/titulaciones/profesores', label: 'Profesores' },
+            { to: '/titulaciones/propuestas', label: 'Revisión de propuestas' },
+         ],
+      },
+   ],
+   [
+      {
          to: '/personas',
          icon: 'i-lucide-user-round',
          label: 'Personas',
@@ -170,6 +186,10 @@ const initials = computed(() => `${currentUser.nombre![0]}${currentUser.apellido
 
 async function logout() {
    await $fetch('/api/auth/logout', { method: 'POST' })
+   // Sin esto, `useUserSession().user`/`loggedIn` quedan con el valor previo hasta la próxima
+   // navegación SSR: auth.global.ts vería "todavía logueado" al entrar a /login y rebotaría de
+   // vuelta — mismo criterio que login.vue tras un login exitoso.
+   await fetchSession()
    await navigateTo('/login')
 }
 
@@ -208,6 +228,13 @@ const pageTitles: Record<string, string> = {
    '/reservas/imprimir': 'Imprimir horarios',
    '/reservas/resumen': 'Resumen de reservas',
    '/reservas/tipos': 'Tipos de reserva',
+   '/titulaciones/procesos': 'Procesos de titulación',
+   '/titulaciones/estudiantes': 'Estudiantes',
+   '/titulaciones/grupos': 'Grupos',
+   '/titulaciones/lineas-investigacion': 'Líneas de investigación',
+   '/titulaciones/roles': 'Roles',
+   '/titulaciones/profesores': 'Profesores',
+   '/titulaciones/propuestas': 'Revisión de propuestas',
    // No están en `navItems` (`/cuenta/contrasena` se llega por el botón del pie; `/cuenta/preferencias`
    // cuelga de su propio `UNavigationMenu`, aparte de `gruposNav`), así que también necesitan su
    // icono acá abajo, en `pageIcon`.
@@ -236,13 +263,13 @@ const pageIcon = computed(() => {
 })
 
 // Rutas sin recurso de backend propio (ver también app/middleware/auth.global.ts).
-const RUTAS_SIN_RESTRICCION = ['/', '/reportes', '/reportes/bloques-libres', '/reportes/topes-horario']
+const RUTAS_SIN_RESTRICCION = ['/', '/reportes']
 
 function puedeVer(to: string) {
    return (
       user.value?.rol === 'Administrador' ||
       RUTAS_SIN_RESTRICCION.includes(to) ||
-      (user.value?.permisos.some((p) => p.ruta === to && p.acciones.includes('ver')) ?? false)
+      (user.value?.permisos?.some((p) => p.ruta === to && p.acciones.includes('ver')) ?? false)
    )
 }
 
