@@ -21,6 +21,8 @@ export interface PersonaBase {
    rolId: number
    jornadaLaboral: JornadaLaboral | null
    rol: Rol | null
+   // Nulo: sin emoji asignado. Ver SesionUsuario.emoji.
+   emoji: string | null
 }
 
 export interface Persona extends PersonaBase {

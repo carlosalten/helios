@@ -41,6 +41,10 @@ export interface SesionUsuario {
    // qué color — ver /cuenta/preferencias y `topeEsEspejo` en horario/index.vue.
    mostrarTopesEspejo?: boolean
    colorTopesEspejo?: string
+   // Nulo: sin emoji asignado. Se muestra flotando sobre el círculo de iniciales en el navbar
+   // (ver app/layouts/default.vue) — elegido de
+   // https://unicode.org/emoji/charts/full-emoji-list.html en /personas/gestion.
+   emoji?: string | null
 
    // ── Campos de 'estudiante' ─────────────────────────────────────────────
    nombres?: string

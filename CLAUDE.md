@@ -44,7 +44,7 @@ No hay scripts de lint ni test configurados aún.
 
 ### Servidor de desarrollo
 
-Si un cambio implica levantar el dev server (smoke test) y luego detenerlo (`pkill -f "nuxt dev --port 3000"` u otro), al terminar **vuelve a levantarlo** para que quede corriendo — el usuario espera tenerlo arriba salvo que pida explícitamente detenerlo. Antes de levantarlo, revisa que no quede ya un proceso escuchando en el puerto 3000 (`lsof -nP -iTCP -sTCP:LISTEN | grep 3000`) para no terminar con dos instancias y que la nueva caiga en el 3001 por colisión de puerto — el que debe quedar corriendo es siempre el del puerto 3000.
+El usuario gestiona el dev server; no lo dejes corriendo "por si acaso" ni lo reinicies sin necesidad. Si necesitas probar algo puntual (smoke test) y no está arriba, puedes levantarlo tú mismo — pero al terminar esa prueba, **bájalo** (`pkill -f "nuxt dev --port 3000"` u otro). No lo dejes corriendo después de usarlo salvo que el usuario te pida explícitamente que quede arriba.
 
 ## Arquitectura de comunicación
 
