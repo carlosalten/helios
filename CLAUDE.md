@@ -44,7 +44,7 @@ No hay scripts de lint ni test configurados aún.
 
 ### Servidor de desarrollo
 
-Si un cambio implica levantar el dev server (smoke test) y luego detenerlo (`pkill -f "nuxt dev --port 3000"` u otro), al terminar **vuelve a levantarlo** para que quede corriendo — el usuario espera tenerlo arriba salvo que pida explícitamente detenerlo. Antes de levantarlo, revisa que no quede ya un proceso escuchando en el puerto 3000 (`lsof -nP -iTCP -sTCP:LISTEN | grep 3000`) para no terminar con dos instancias y que la nueva caiga en el 3001 por colisión de puerto — el que debe quedar corriendo es siempre el del puerto 3000.
+El usuario gestiona el dev server; no lo dejes corriendo "por si acaso" ni lo reinicies sin necesidad. Si necesitas probar algo puntual (smoke test) y no está arriba, puedes levantarlo tú mismo — pero al terminar esa prueba, **bájalo** (`pkill -f "nuxt dev --port 3000"` u otro). No lo dejes corriendo después de usarlo salvo que el usuario te pida explícitamente que quede arriba.
 
 ## Arquitectura de comunicación
 
@@ -89,6 +89,7 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 - **`asignatura_plan_semestre_positivo`** — en `asignatura_plan`, `semestre >= 1`.
 - **`plan_cantidad_semestres_rango`** — en `plan`, `cantidad_semestres` entre 4 y 12 (default 4).
 - **`curso_numero_positivo`** — en `curso`, `numero >= 1`.
+- **`tt_grupo_numero_positivo`** — en `tt_grupo`, `numero >= 1`. Además, `numero` es único junto con `proceso_id` (`tt_grupo_proceso_id_numero_key`): no se puede repetir dentro del mismo proceso, pero sí entre procesos distintos.
 - **`curso_numero_semestre_rango`** — en `curso`, `numero_semestre` entre 1 y 12.
 - **`paralelo_cupo_rango`** — en `paralelo`, `cupo` entre 0 y 100.
 - **`feriado_horas_validas`** — en `feriado`, `hora_inicio`/`hora_termino` van ambos `null` (feriado de día completo) o ambos con valor y `hora_termino > hora_inicio` (feriado parcial).
