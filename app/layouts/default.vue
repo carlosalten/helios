@@ -164,6 +164,7 @@ const currentUser = reactive({
    nombre: user.value?.nombre,
    apellido: user.value?.apellido,
    rol: user.value?.rol,
+   emoji: user.value?.emoji,
 })
 
 const initials = computed(() => `${currentUser.nombre![0]}${currentUser.apellido![0]}`.toUpperCase())
@@ -405,9 +406,12 @@ const navItemsPreferencias = computed<NavigationMenuItem[][]>(() => [
             <!-- Authenticated user -->
             <div class="flex items-center gap-3 rounded-xl px-3 py-2.5" :class="collapsed ? 'flex-col px-0' : ''">
                <div
-                  class="flex size-8 shrink-0 items-center justify-center rounded-full bg-usm-blue text-xs font-bold text-white"
+                  class="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-usm-blue text-xs font-bold text-white"
                >
                   {{ initials }}
+                  <span v-if="currentUser.emoji" class="absolute -top-1.5 -right-1.5 text-[1.75rem] leading-none">
+                     {{ currentUser.emoji }}
+                  </span>
                </div>
                <div v-if="!collapsed" class="min-w-0 flex-1">
                   <p class="truncate text-sm font-medium text-usm-text dark:text-white">

@@ -83,6 +83,7 @@ const formCrear = reactive({
    apellido: '',
    rolId: 0,
    jornadaLaboral: '__sin_definir__' as JornadaLaboral | '__sin_definir__',
+   emoji: '',
 })
 const errorGuardar = ref<string | null>(null)
 
@@ -101,6 +102,7 @@ function abrirCrear() {
    formCrear.apellido = ''
    const rolProfesor = rolesAsignables.value.find((r) => r.nombre === 'Profesor')
    formCrear.rolId = rolProfesor?.id ?? rolesAsignables.value[0]?.id ?? 0
+   formCrear.emoji = ''
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -134,6 +136,7 @@ const formEditar = reactive({
    nombre: '',
    apellido: '',
    jornadaLaboral: '__sin_definir__' as JornadaLaboral | '__sin_definir__',
+   emoji: '',
 })
 const errorEditar = ref<string | null>(null)
 
@@ -142,6 +145,7 @@ function abrirEditar(persona: Persona) {
    formEditar.nombre = persona.nombre
    formEditar.apellido = persona.apellido
    formEditar.jornadaLaboral = persona.jornadaLaboral ?? '__sin_definir__'
+   formEditar.emoji = persona.emoji ?? ''
    errorEditar.value = null
    modalEditarMostrar.value = true
 }
@@ -457,6 +461,14 @@ async function confirmarEliminar() {
                      class="w-full"
                   />
                </UFormField>
+               <UFormField
+                  label="Emoji"
+                  name="emoji"
+                  description="Opcional. Un emoji elegido del catálogo Unicode; se muestra sobre las iniciales de la persona en el navbar."
+                  :ui="{ description: 'text-[13px]' }"
+               >
+                  <UInput v-model="formCrear.emoji" placeholder="🦉" class="w-24" />
+               </UFormField>
                <p class="text-xs text-usm-text-muted dark:text-slate-400">
                   La persona se crea sin acceso al sistema. Para darle acceso, asígnale una contraseña después.
                </p>
@@ -500,6 +512,14 @@ async function confirmarEliminar() {
                      value-key="value"
                      class="w-full"
                   />
+               </UFormField>
+               <UFormField
+                  label="Emoji"
+                  name="emoji"
+                  description="Opcional. Un emoji elegido del catálogo Unicode; se muestra sobre las iniciales de la persona en el navbar."
+                  :ui="{ description: 'text-[13px]' }"
+               >
+                  <UInput v-model="formEditar.emoji" placeholder="🦉" class="w-24" />
                </UFormField>
             </UForm>
          </template>

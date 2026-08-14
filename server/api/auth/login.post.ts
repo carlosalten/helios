@@ -126,6 +126,7 @@ export default defineEventHandler(async (event) => {
          temaPreferido: persona.temaPreferido,
          mostrarTopesEspejo: persona.mostrarTopesEspejo,
          colorTopesEspejo: persona.colorTopesEspejo,
+         emoji: persona.emoji,
       },
    })
    return { ok: true }

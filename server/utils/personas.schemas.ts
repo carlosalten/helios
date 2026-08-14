@@ -44,6 +44,16 @@ export const crearRolSchema = z.object({
 
 export const JORNADAS_LABORALES = ['COMPLETA', 'PARCIAL'] as const
 
+// Un solo emoji (o una secuencia ZWJ de varios codepoints — familia, tono de piel, etc.)
+// elegido de https://unicode.org/emoji/charts/full-emoji-list.html. String vacío se guarda
+// como nulo, no como cadena vacía (mismo criterio que TtRol.descripcion).
+const emojiSchema = z
+   .string()
+   .trim()
+   .max(32, 'Máximo 32 caracteres')
+   .nullable()
+   .transform((v) => (v ? v : null))
+
 export const crearPersonaSchema = z.object({
    email: z
       .string({ error: 'El email es requerido' })
@@ -56,12 +66,14 @@ export const crearPersonaSchema = z.object({
    rolId: z.number({ error: 'El rol es requerido' }).int(),
    // Solo aplica a profesores; el resto de los roles la deja en null.
    jornadaLaboral: z.enum(JORNADAS_LABORALES, { error: 'Jornada laboral inválida' }).nullable(),
+   emoji: emojiSchema,
 })
 
 export const editarPersonaSchema = z.object({
    nombre: nombrePropioSchema('El nombre es requerido'),
    apellido: nombrePropioSchema('El apellido es requerido'),
    jornadaLaboral: z.enum(JORNADAS_LABORALES, { error: 'Jornada laboral inválida' }).nullable(),
+   emoji: emojiSchema,
 })
 
 export const cambiarRolPersonaSchema = z.object({
