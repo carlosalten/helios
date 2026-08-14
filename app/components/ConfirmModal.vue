@@ -7,6 +7,7 @@ defineProps<{
    confirmColor?: 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
    confirmIcon?: string
    loading?: boolean
+   disabled?: boolean
 }>()
 
 defineEmits<{ confirm: [] }>()
@@ -23,7 +24,7 @@ defineEmits<{ confirm: [] }>()
                Cancelar
             </UButton>
             <UButton type="button" :icon="confirmIcon" :color="confirmColor ?? 'primary'" :loading="loading"
-               @click="$emit('confirm')">
+               :disabled="disabled" @click="$emit('confirm')">
                {{ confirmLabel }}
             </UButton>
          </div>
