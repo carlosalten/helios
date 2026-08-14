@@ -551,7 +551,7 @@ model TtProceso {
 
 model TtGrupo {
   id        Int    @id @default(autoincrement())
-  nombre    String @db.VarChar(50)
+  nombre    String @db.VarChar(100)
   // Constraint `tt_grupo_numero_positivo` en BD (>= 1) y unique compuesto con procesoId acá
   // abajo: no se puede repetir el número dentro del mismo proceso, pero sí entre procesos
   // distintos (cada proceso numera sus propios grupos desde 1).
