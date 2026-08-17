@@ -13,12 +13,11 @@ export default defineEventHandler(async (event) => {
    const hasta = typeof query.hasta === 'string' ? query.hasta : undefined
    if (!salaCodigo || !desde || !hasta) return []
 
-   // Apoyo Docente solo ve las reservas de las salas de las que es encargado (EncargadoSala) —
-   // mismo alcance que server/utils/alcanceReservas.ts aplica para mutar. El resto de los roles
-   // con 'ver' en estas rutas no tiene esta restricción (el frontend igual no ofrece elegir
-   // otra sala — ver salasVisibles en horario.vue/imprimir.vue — pero el backend no confía
-   // solo en eso).
-   if (usuario.rol === 'Apoyo Docente') {
+   // Cualquier rol que no sea Administrador solo ve las reservas de las salas de las que es
+   // encargado (EncargadoSala) — mismo alcance que /reservas/resumen (server/api/reservas/
+   // resumen.get.ts) y que salasVisibles en horario.vue/imprimir.vue, que ya no ofrece elegir
+   // otra sala; el backend no confía solo en eso.
+   if (usuario.rol !== 'Administrador') {
       const persona = await prisma.persona.findUnique({ where: { email: usuario.email } })
       const encargado = persona
          ? await prisma.encargadoSala.findUnique({
