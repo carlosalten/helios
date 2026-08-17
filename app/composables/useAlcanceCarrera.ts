@@ -13,5 +13,14 @@ export function useAlcanceCarrera() {
       return user.value.carrerasJefe?.includes(carreraCodigo) ?? false
    }
 
-   return { tieneAlcanceSobreCarrera }
+   // Ver el horario de una carrera (app/pages/horario/index.vue): 'Administrador' y 'Jefe de
+   // Carrera' ven las de todas; el resto solo las que dirige o tiene asignadas
+   // (SesionUsuario.carrerasAsignadas, calculada en el login — ver resolverCarrerasAsignadas
+   // en el backend, mismo criterio que debe reflejar acá).
+   function puedeVerCarrera(carreraCodigo: number) {
+      if (user.value?.rol === 'Administrador' || user.value?.rol === 'Jefe de Carrera') return true
+      return user.value?.carrerasAsignadas?.includes(carreraCodigo) ?? false
+   }
+
+   return { tieneAlcanceSobreCarrera, puedeVerCarrera }
 }
