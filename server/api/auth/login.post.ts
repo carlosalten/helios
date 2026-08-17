@@ -100,6 +100,7 @@ export default defineEventHandler(async (event) => {
    // Administrador tiene bypass total: no necesita filas de permiso.
    let permisos: PermisoResumen[] = []
    let carrerasJefe: number[] | null = null
+   let carrerasAsignadas: number[] | null = null
 
    if (rol !== 'Administrador') {
       const filas = await prisma.permiso.findMany({ where: { rol } })
@@ -110,6 +111,7 @@ export default defineEventHandler(async (event) => {
       if (rol === 'Jefe de Carrera') {
          carrerasJefe = await resolverCarrerasJefe(rol, persona.email)
       }
+      carrerasAsignadas = await resolverCarrerasAsignadas(rol, persona.email)
    }
 
    await setUserSession(event, {
@@ -124,6 +126,7 @@ export default defineEventHandler(async (event) => {
          personaId: persona.id,
          permisos,
          carrerasJefe,
+         carrerasAsignadas,
          temaPreferido: persona.temaPreferido,
          mostrarTopesEspejo: persona.mostrarTopesEspejo,
          colorTopesEspejo: persona.colorTopesEspejo,

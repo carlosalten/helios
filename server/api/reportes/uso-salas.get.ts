@@ -8,7 +8,9 @@
 //
 // Las salas son un recurso compartido por todo el departamento (no pertenecen a una
 // carrera, a diferencia de cursos/paralelos), así que este reporte no se acota por
-// `resolverCarrerasJefe`: quien tenga 'ver' en esta ruta ve el uso de todas las salas.
+// `resolverCarrerasJefe`. Sí se acota por sala asignada (EncargadoSala): cualquier rol que no
+// sea Administrador solo ve el uso de las salas de las que es encargado — mismo criterio que
+// /reservas/resumen (server/api/reservas/resumen.get.ts).
 //
 // ── Dos métricas distintas, a propósito ──────────────────────────────────────────────────
 // 1) % de uso y bloques libres: sobre la PLANTILLA SEMANAL (bloques del semestre × 7 días).
@@ -69,7 +71,16 @@ function agruparADesglose(cantidadPorNombre: Map<string, { cantidad: number; col
 }
 
 export default defineEventHandler(async (event) => {
-   await requierePermiso(event, '/reportes/uso-salas', 'ver')
+   const usuario = await requierePermiso(event, '/reportes/uso-salas', 'ver')
+
+   let salasPermitidas: string[] | null = null
+   if (usuario.rol !== 'Administrador') {
+      const persona = await prisma.persona.findUnique({ where: { email: usuario.email } })
+      const encargos = persona
+         ? await prisma.encargadoSala.findMany({ where: { personaId: persona.id }, select: { salaCodigo: true } })
+         : []
+      salasPermitidas = encargos.map((e) => e.salaCodigo)
+   }
 
    const semestre = await prisma.semestre.findFirst({ where: { vigente: true } })
    if (!semestre) {
@@ -77,14 +88,24 @@ export default defineEventHandler(async (event) => {
    }
 
    const [salas, bloques, sesiones, reservas] = await Promise.all([
-      prisma.sala.findMany({ orderBy: { codigo: 'asc' }, include: { tipoSala: true } }),
+      prisma.sala.findMany({
+         where: { ...(salasPermitidas && { codigo: { in: salasPermitidas } }) },
+         orderBy: { codigo: 'asc' },
+         include: { tipoSala: true },
+      }),
       prisma.bloque.findMany({ where: { semestreId: semestre.id }, orderBy: { numero: 'asc' } }),
       prisma.sesionParalelo.findMany({
-         where: { salaCodigo: { not: null }, paralelo: { curso: { semestreId: semestre.id } } },
+         where: {
+            salaCodigo: salasPermitidas ? { in: salasPermitidas } : { not: null },
+            paralelo: { curso: { semestreId: semestre.id } },
+         },
          select: { diaSemana: true, salaCodigo: true, bloques: { select: { bloqueId: true } } },
       }),
       prisma.reserva.findMany({
-         where: { fecha: { gte: semestre.fechaInicio, lte: semestre.fechaFin } },
+         where: {
+            fecha: { gte: semestre.fechaInicio, lte: semestre.fechaFin },
+            ...(salasPermitidas && { salaCodigo: { in: salasPermitidas } }),
+         },
          select: {
             fecha: true,
             inicio: true,

@@ -30,11 +30,12 @@ const bloquesSemestre = computed(() =>
       .sort((a, b) => a.numero - b.numero)
 )
 
-/* ── Salas: las mismas visibles que en /reservas/horario — asignadas (EncargadoSala), o
-   todas para el Administrador. El usuario elige cuáles imprimir con checkboxes. ── */
+/* ── Salas: las mismas visibles que en /reservas/horario — acotadas a las asignadas
+   (EncargadoSala) solo para 'Apoyo Docente'; el resto de los roles ve todas. El usuario elige
+   cuáles imprimir con checkboxes. ── */
 const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? []))
 const salasVisibles = computed(() => {
-   if (user.value?.rol === 'Administrador') return salas.value ?? []
+   if (user.value?.rol !== 'Apoyo Docente') return salas.value ?? []
    return (salas.value ?? []).filter((s) => misSalasEncargadoSet.value.has(s.codigo))
 })
 

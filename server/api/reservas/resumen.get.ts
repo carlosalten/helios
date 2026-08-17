@@ -1,10 +1,13 @@
-// Resumen de reservas para /reservas/resumen: todas las reservas (de cualquier sala, sin
-// acotar por carrera ni por sala a cargo — mismo criterio de solo-lectura que /reservas/
-// horario) dentro de la ventana que cubre hoy, la semana y el mes actuales. El front agrupa
-// por tipo de reserva y arma las 3 listas (hoy/semana/mes); acá solo se calculan los rangos
-// de fecha y se trae la data cruda.
+// Resumen de reservas para /reservas/resumen: acotado a las salas asignadas (EncargadoSala)
+// para cualquier rol que no sea Administrador, que ve las de todas las salas. A diferencia de
+// /reservas/horario e /imprimir (donde solo 'Apoyo Docente' queda acotado — ver
+// server/utils/alcanceReservas.ts), acá la restricción aplica a todos los roles no-Administrador:
+// es información agregada de "mis salas", no una vista operativa donde otros roles necesitan
+// ver todo para agendar. Dentro de la ventana que cubre hoy, la semana y el mes actuales. El
+// front agrupa por tipo de reserva y arma las 3 listas (hoy/semana/mes); acá solo se calculan
+// los rangos de fecha y se trae la data cruda.
 export default defineEventHandler(async (event) => {
-   await requierePermiso(event, '/reservas/resumen', 'ver')
+   const usuario = await requierePermiso(event, '/reservas/resumen', 'ver')
 
    const query = getQuery(event)
    const hoyISO = typeof query.hoy === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(query.hoy) ? query.hoy : null
@@ -27,8 +30,20 @@ export default defineEventHandler(async (event) => {
    const rangoDesde = inicioSemana < inicioMes ? inicioSemana : inicioMes
    const rangoHasta = finSemana > finMes ? finSemana : finMes
 
+   let salasPermitidas: string[] | null = null
+   if (usuario.rol !== 'Administrador') {
+      const persona = await prisma.persona.findUnique({ where: { email: usuario.email } })
+      const encargos = persona
+         ? await prisma.encargadoSala.findMany({ where: { personaId: persona.id }, select: { salaCodigo: true } })
+         : []
+      salasPermitidas = encargos.map((e) => e.salaCodigo)
+   }
+
    const reservas = await prisma.reserva.findMany({
-      where: { fecha: { gte: rangoDesde, lte: rangoHasta } },
+      where: {
+         fecha: { gte: rangoDesde, lte: rangoHasta },
+         ...(salasPermitidas && { salaCodigo: { in: salasPermitidas } }),
+      },
       select: {
          id: true,
          titulo: true,

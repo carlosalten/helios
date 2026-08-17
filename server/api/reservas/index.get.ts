@@ -2,7 +2,7 @@
 // un rango de fechas a la vez (la semana visible en /reservas/horario, o cada sala elegida en
 // /reservas/imprimir, que pide una por una).
 export default defineEventHandler(async (event) => {
-   await requiereAlgunPermiso(event, [
+   const usuario = await requiereAlgunPermiso(event, [
       ['/reservas/horario', 'ver'],
       ['/reservas/imprimir', 'ver'],
    ])
@@ -12,6 +12,21 @@ export default defineEventHandler(async (event) => {
    const desde = typeof query.desde === 'string' ? query.desde : undefined
    const hasta = typeof query.hasta === 'string' ? query.hasta : undefined
    if (!salaCodigo || !desde || !hasta) return []
+
+   // Apoyo Docente solo ve las reservas de las salas de las que es encargado (EncargadoSala) —
+   // mismo alcance que server/utils/alcanceReservas.ts aplica para mutar. El resto de los roles
+   // con 'ver' en estas rutas no tiene esta restricción (el frontend igual no ofrece elegir
+   // otra sala — ver salasVisibles en horario.vue/imprimir.vue — pero el backend no confía
+   // solo en eso).
+   if (usuario.rol === 'Apoyo Docente') {
+      const persona = await prisma.persona.findUnique({ where: { email: usuario.email } })
+      const encargado = persona
+         ? await prisma.encargadoSala.findUnique({
+              where: { personaId_salaCodigo: { personaId: persona.id, salaCodigo } },
+           })
+         : null
+      if (!encargado) return []
+   }
 
    return prisma.reserva.findMany({
       where: {

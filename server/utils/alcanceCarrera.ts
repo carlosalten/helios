@@ -18,17 +18,19 @@ export async function resolverCarrerasJefe(rol: string, email: string): Promise<
    return carreras.map((c) => c.codigo)
 }
 
-// Códigos de carrera a las que una Persona (rol 'Jefe de Carrera') está asociada: de las
-// que es jefe (Carrera.jefePersonaId) o a las que fue asignada explícitamente
-// (CarreraPersona), sin más allá del jefe único. Usado donde "ver" debe alcanzar a todas
-// las carreras con las que la persona tiene alguna relación, no solo aquella que gestiona
-// como jefe.
+// Alcance para VER el horario (`/horario`): 'Administrador' y 'Jefe de Carrera' ven el de
+// todas las carreras (un Jefe de Carrera puede revisar cómo va otra, igual que con /paralelos,
+// /cursos, /planes y /carreras — ver useAlcanceCarrera.ts). El resto de los roles con permiso
+// de ver /horario (Director Departamento, Profesor, Apoyo Docente, Funcionario, Externo, o
+// cualquier rol nuevo) solo ve las carreras que dirige (Carrera.jefePersonaId) o a las que fue
+// asignado explícitamente (CarreraPersona) — mismo criterio que el alcance "personal" del
+// dashboard (ver resolverAlcanceDashboard).
 //
 // Devuelve:
-//   - null      → sin restricción (cualquier rol distinto de 'Jefe de Carrera')
+//   - null      → sin restricción (Administrador, Jefe de Carrera)
 //   - number[]  → códigos de carrera permitidos (puede ser [] si no hay ninguna)
 export async function resolverCarrerasAsignadas(rol: string, email: string): Promise<number[] | null> {
-   if (rol !== 'Jefe de Carrera') return null
+   if (rol === 'Administrador' || rol === 'Jefe de Carrera') return null
 
    const persona = await prisma.persona.findUnique({ where: { email } })
    if (!persona) return []
