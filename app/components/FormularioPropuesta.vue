@@ -73,8 +73,22 @@ const puedeEnviar = computed(() => {
    return true
 })
 
+// Al crear (no al editar) se pide confirmación aparte: el estudiante solo puede tener una
+// propuesta activa a la vez, así que conviene que sepa de antemano que no podrá ingresar otra
+// mientras esta esté en evaluación.
+const confirmarEnvioMostrar = ref(false)
+function onSubmit() {
+   if (!puedeEnviar.value) return
+   if (!props.propuesta) {
+      confirmarEnvioMostrar.value = true
+      return
+   }
+   enviar()
+}
+
 async function enviar() {
    if (!puedeEnviar.value) return
+   confirmarEnvioMostrar.value = false
    enviando.value = true
    errorEnviar.value = null
    try {
@@ -121,7 +135,7 @@ async function enviar() {
                en estado pendiente de revisión por la jefatura de carrera.
             </template>
          </p>
-         <UForm id="form-propuesta" :state="form" class="space-y-4" @submit="enviar">
+         <UForm id="form-propuesta" :state="form" class="space-y-4" @submit="onSubmit">
             <UFormField
                label="Título"
                name="titulo"
@@ -226,4 +240,17 @@ async function enviar() {
          </UButton>
       </template>
    </UModal>
+
+   <ConfirmModal
+      v-model:open="confirmarEnvioMostrar"
+      title="¿Confirmar envío de la propuesta?"
+      confirm-label="Enviar propuesta"
+      :loading="enviando"
+      @confirm="enviar"
+   >
+      <p class="text-sm text-usm-text dark:text-slate-200">
+         Ten en cuenta que solo puedes tener una propuesta activa a la vez. Una vez enviada, no podrás ingresar otra
+         propuesta a menos que la actual sea rechazada durante la evaluación.
+      </p>
+   </ConfirmModal>
 </template>
