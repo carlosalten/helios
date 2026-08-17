@@ -73,11 +73,13 @@ const bloquesSemestre = computed(() =>
 )
 
 /* ── Sala ────────────────────────────────────────────────── */
-// El panel de salas se acota a las asignadas (EncargadoSala) solo para 'Apoyo Docente' — mismo
-// criterio que server/utils/alcanceReservas.ts. El resto de los roles con 'ver' en esta ruta
-// (Administrador, Jefe de Carrera, Profesor) ve todas las salas, sin restricción adicional.
+// El panel de salas se acota a las asignadas (EncargadoSala) para cualquier rol que no sea
+// Administrador, que ve todas — mismo criterio que /reservas/resumen (server/api/reservas/
+// resumen.get.ts). Si antes esta lista sale vacía sin ser el problema real, revisa primero que
+// /api/salas no esté devolviendo 403 para el rol (ver server/api/salas/index.get.ts): un 403 ahí
+// deja `salas` vacío antes de que este filtro tenga algo que filtrar.
 const salasVisibles = computed(() => {
-   if (user.value?.rol !== 'Apoyo Docente') return salas.value ?? []
+   if (user.value?.rol === 'Administrador') return salas.value ?? []
    return (salas.value ?? []).filter((s) => misSalasEncargadoSet.value.has(s.codigo))
 })
 

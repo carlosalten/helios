@@ -1,9 +1,17 @@
-// Ver la lista de cursos NO se acota por carrera: cualquiera con 'ver' en /cursos ve todos
-// los cursos del departamento (útil, por ejemplo, para que un Jefe de Carrera revise cómo
-// van otras carreras). Lo que sí queda acotado por carrera son las mutaciones — ver
-// index.post.ts, [id].patch.ts y [id].delete.ts, que usan resolverCarrerasCursos.
+// Ver la lista de cursos NO se acota por carrera: cualquiera con 'ver' en alguna de las rutas
+// de abajo ve todos los cursos del departamento (útil, por ejemplo, para que un Jefe de
+// Carrera revise cómo van otras carreras). Lo que sí queda acotado por carrera son las
+// mutaciones — ver index.post.ts, [id].patch.ts y [id].delete.ts, que usan
+// resolverCarrerasCursos. Además de la propia página /cursos, este endpoint lo consumen
+// /horario (para armar el selector de carrera) y /paralelos y /paralelos/asignacion — un rol
+// que solo tenga 'ver' en esas rutas (no en /cursos) también necesita poder pedirlo.
 export default defineEventHandler(async (event) => {
-   await requierePermiso(event, '/cursos', 'ver')
+   await requiereAlgunPermiso(event, [
+      ['/cursos', 'ver'],
+      ['/horario', 'ver'],
+      ['/paralelos', 'ver'],
+      ['/paralelos/asignacion', 'ver'],
+   ])
 
    const cursos = await prisma.curso.findMany({
       orderBy: [
