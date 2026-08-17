@@ -23,7 +23,7 @@ const {
    puedeEditar: puedeEditarHorarioBase,
    puedeBorrar: puedeBorrarHorarioBase,
 } = usePermiso('/horario')
-const { tieneAlcanceSobreCarrera } = useAlcanceCarrera()
+const { tieneAlcanceSobreCarrera, puedeVerCarrera } = useAlcanceCarrera()
 
 const { data: semestres } = await useFetch<Semestre[]>('/api/semestres')
 
@@ -317,10 +317,13 @@ const puedeBorrarHorario = computed(() => puedeBorrarHorarioBase.value && puedeM
 // cursos dejaría la matriz vacía sin explicar por qué. El filtro es el mismo que el de
 // `cursosDeCarrera` (plan vigente + semestre), así que lo que se ofrece es exactamente lo que
 // después se puede ver. La etiqueta lleva el número de plan porque es el que define la malla.
+// También se descartan las carreras fuera del alcance de la persona (puedeVerCarrera) — mismo
+// criterio que ya aplica el backend en GET /api/sesiones (resolverCarrerasAsignadas).
 const opcionesCarrera = computed(() => {
    const porCarrera = new Map<number, { nombre: string; planes: Set<number> }>()
    for (const curso of cursos.value ?? []) {
       if (!curso.plan.vigente || curso.semestreId !== semestreSeleccionadoId.value) continue
+      if (!puedeVerCarrera(curso.plan.carreraCodigo)) continue
       const entrada = porCarrera.get(curso.plan.carreraCodigo)
       if (entrada) entrada.planes.add(curso.plan.numero)
       else

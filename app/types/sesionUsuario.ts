@@ -34,6 +34,10 @@ export interface SesionUsuario {
    // vía bypass y no necesita filas de permiso.
    permisos?: PermisoResumen[]
    carrerasJefe?: number[] | null
+   // Códigos de carrera que la persona dirige o tiene asignadas (CarreraPersona) — usado para
+   // acotar qué ve en /horario (ver resolverCarrerasAsignadas). `null` = sin restricción
+   // (Administrador y Jefe de Carrera, que ven el horario de todas las carreras).
+   carrerasAsignadas?: number[] | null
    // Se aplica una vez al montar el layout (ver app/layouts/default.vue) para que el theme
    // siga a la persona entre dispositivos; /cuenta/preferencias la cambia en el momento.
    temaPreferido?: TemaPreferido

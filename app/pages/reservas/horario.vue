@@ -73,10 +73,11 @@ const bloquesSemestre = computed(() =>
 )
 
 /* ── Sala ────────────────────────────────────────────────── */
-// El panel de salas solo muestra las que el usuario tiene asignadas (EncargadoSala) — un
-// Administrador siempre ve todas, sin importar de cuáles sea encargado.
+// El panel de salas se acota a las asignadas (EncargadoSala) solo para 'Apoyo Docente' — mismo
+// criterio que server/utils/alcanceReservas.ts. El resto de los roles con 'ver' en esta ruta
+// (Administrador, Jefe de Carrera, Profesor) ve todas las salas, sin restricción adicional.
 const salasVisibles = computed(() => {
-   if (user.value?.rol === 'Administrador') return salas.value ?? []
+   if (user.value?.rol !== 'Apoyo Docente') return salas.value ?? []
    return (salas.value ?? []).filter((s) => misSalasEncargadoSet.value.has(s.codigo))
 })
 
