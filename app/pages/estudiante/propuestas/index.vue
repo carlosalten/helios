@@ -80,12 +80,14 @@ async function onGuardado() {
    <div class="space-y-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
          <p class="text-sm text-usm-text-muted dark:text-slate-400">
-            Tus propuestas de trabajo de título. Solo puede agregar propuestas si es que no tiene ninguna anterior o las
-            que ya ingresó fueron rechazdas.
+            Tus propuestas de trabajo de título. No podrás ingresar una nueva propuesta mientras exista otra en
+            revisión. La opción volverá a habilitarse únicamente si las propuestas que presentes son rechazadas.
          </p>
          <div class="flex flex-wrap items-center gap-3 sm:justify-end">
             <div class="flex items-center gap-2">
-               <p class="text-xs text-usm-text-muted dark:text-slate-400">Última actualización: {{ ultimaActualizacion }}</p>
+               <p class="text-xs text-usm-text-muted dark:text-slate-400">
+                  Última actualización: {{ ultimaActualizacion }}
+               </p>
                <UTooltip text="Actualizar">
                   <UButton
                      icon="i-lucide-refresh-cw"

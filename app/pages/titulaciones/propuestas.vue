@@ -5,6 +5,8 @@ import { MODALIDADES_PROPUESTA } from '~/types/titulaciones'
 
 const toast = useToast()
 
+const { puedeBorrar } = usePermiso('/titulaciones/propuestas')
+
 const { data: propuestas, status, refresh } = await useFetch<TtPropuestaRevision[]>('/api/titulaciones/propuestas')
 
 function ultimoEstado(propuesta: TtPropuestaRevision) {
@@ -212,6 +214,31 @@ async function enviarDecision(estado: string, comentario?: string) {
       toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
    } finally {
       procesandoDecision.value = false
+   }
+}
+
+/* ── Eliminar (borrado en cascada: historial de estados y comisión) ────────
+   Visible solo con permiso 'borrar' en /titulaciones/propuestas (ver requierePermiso en
+   server/api/titulaciones/propuestas/[id]/index.delete.ts) — a diferencia de las 3 acciones de
+   arriba, esta borra la fila completa, no agrega un nuevo estado. */
+const modalEliminarMostrar = ref(false)
+const eliminandoPropuesta = ref(false)
+
+async function eliminarPropuesta() {
+   if (!propuestaSeleccionada.value) return
+   eliminandoPropuesta.value = true
+   try {
+      await $fetch(`/api/titulaciones/propuestas/${propuestaSeleccionada.value.id}`, { method: 'DELETE' })
+      modalEliminarMostrar.value = false
+      await refresh()
+      slideoverAbierto.value = false
+      propuestaSeleccionada.value = null
+      toast.add({ title: 'Propuesta eliminada', color: 'success', icon: 'i-lucide-check-circle' })
+   } catch (e: unknown) {
+      const mensaje = (e as { data?: { message?: string } }).data?.message ?? 'No se pudo eliminar la propuesta'
+      toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
+   } finally {
+      eliminandoPropuesta.value = false
    }
 }
 </script>
@@ -450,43 +477,61 @@ async function enviarDecision(estado: string, comentario?: string) {
                </div>
             </template>
             <template #footer>
-               <div v-if="propuestaSeleccionada" class="flex w-full flex-wrap justify-center gap-2">
-                  <UButton
-                     icon="i-lucide-message-circle-question"
-                     color="warning"
-                     variant="soft"
-                     @click="
-                        () => {
-                           modalAntecedentesMostrar = true
-                        }
-                     "
-                  >
-                     Solicitar precisar
-                  </UButton>
-                  <UButton
-                     icon="i-lucide-x"
-                     color="error"
-                     variant="soft"
-                     @click="
-                        () => {
-                           modalRechazarMostrar = true
-                        }
-                     "
-                  >
-                     Rechazar
-                  </UButton>
-                  <UButton
-                     icon="i-lucide-check"
-                     color="success"
-                     variant="soft"
-                     @click="
-                        () => {
-                           modalAceptarMostrar = true
-                        }
-                     "
-                  >
-                     Aceptar
-                  </UButton>
+               <div v-if="propuestaSeleccionada" class="flex w-full items-center gap-2">
+                  <UTooltip v-if="puedeBorrar" text="Eliminar propuesta">
+                     <UButton
+                        icon="i-lucide-trash-2"
+                        color="error"
+                        variant="ghost"
+                        aria-label="Eliminar propuesta"
+                        @click="
+                           () => {
+                              modalEliminarMostrar = true
+                           }
+                        "
+                     />
+                  </UTooltip>
+                  <div class="flex flex-1 flex-wrap justify-center gap-2">
+                     <UButton
+                        icon="i-lucide-message-circle-question"
+                        color="warning"
+                        variant="soft"
+                        @click="
+                           () => {
+                              modalAntecedentesMostrar = true
+                           }
+                        "
+                     >
+                        Solicitar precisar
+                     </UButton>
+                     <UButton
+                        icon="i-lucide-x"
+                        color="error"
+                        variant="soft"
+                        @click="
+                           () => {
+                              modalRechazarMostrar = true
+                           }
+                        "
+                     >
+                        Rechazar
+                     </UButton>
+                     <UButton
+                        icon="i-lucide-check"
+                        color="success"
+                        variant="soft"
+                        @click="
+                           () => {
+                              modalAceptarMostrar = true
+                           }
+                        "
+                     >
+                        Aceptar
+                     </UButton>
+                  </div>
+                  <!-- Espaciador simétrico al botón de eliminar, para que el grupo central quede
+                       centrado igual con o sin permiso de borrar. -->
+                  <div v-if="puedeBorrar" class="size-8 shrink-0" aria-hidden="true" />
                </div>
             </template>
          </USlideover>
@@ -560,6 +605,28 @@ async function enviarDecision(estado: string, comentario?: string) {
                      placeholder="Detalla qué le falta a la propuesta…"
                   />
                </UFormField>
+            </div>
+         </ConfirmModal>
+
+         <!-- Confirmar eliminar -->
+         <ConfirmModal
+            v-model:open="modalEliminarMostrar"
+            title="Eliminar propuesta"
+            confirm-label="Eliminar"
+            confirm-icon="i-lucide-trash-2"
+            confirm-color="error"
+            :loading="eliminandoPropuesta"
+            @confirm="eliminarPropuesta"
+         >
+            <div class="space-y-2">
+               <p class="text-sm text-usm-text dark:text-slate-200">
+                  ¿Eliminar la propuesta <span class="font-semibold">{{ propuestaSeleccionada?.titulo }}</span
+                  >?
+               </p>
+               <p class="text-sm text-error">
+                  Se eliminará también todo su historial de estados y la comisión asignada. Esta acción no se puede
+                  deshacer.
+               </p>
             </div>
          </ConfirmModal>
       </template>
