@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { TtPropuestaRevision } from '~/types/titulaciones'
+import type { CatalogosPropuesta, TtPropuestaRevision } from '~/types/titulaciones'
 import { MODALIDADES_PROPUESTA } from '~/types/titulaciones'
 
 const toast = useToast()
 
-const { puedeBorrar } = usePermiso('/titulaciones/propuestas')
+const { puedeBorrar, puedeEditar } = usePermiso('/titulaciones/propuestas')
 
-const { data: propuestas, status, refresh } = await useFetch<TtPropuestaRevision[]>('/api/titulaciones/propuestas')
+const [
+   { data: propuestas, status, refresh },
+   { data: catalogos },
+] = await Promise.all([
+   useFetch<TtPropuestaRevision[]>('/api/titulaciones/propuestas'),
+   useFetch<CatalogosPropuesta>('/api/titulaciones/propuestas/catalogos'),
+])
 
 function ultimoEstado(propuesta: TtPropuestaRevision) {
    return propuesta.estados[0]?.estado ?? null
@@ -215,6 +221,21 @@ async function enviarDecision(estado: string, comentario?: string) {
    } finally {
       procesandoDecision.value = false
    }
+}
+
+/* ── Editar (jefatura) ───────────────────────────────────────
+   Corrige los datos de la propuesta sin tocar su estado de revisión — a diferencia de las 3
+   acciones de decisión de arriba, esta no agrega una fila a tt_estado. Reutiliza
+   FormularioPropuesta en modo 'staff' (ver ese componente). */
+const modalEditarMostrar = ref(false)
+
+async function onGuardadoEdicion() {
+   await refresh()
+   if (propuestaSeleccionada.value) {
+      propuestaSeleccionada.value =
+         propuestas.value?.find((p) => p.id === propuestaSeleccionada.value?.id) ?? null
+   }
+   toast.add({ title: 'Propuesta actualizada', color: 'success', icon: 'i-lucide-check-circle' })
 }
 
 /* ── Eliminar (borrado en cascada: historial de estados y comisión) ────────
@@ -478,19 +499,34 @@ async function eliminarPropuesta() {
             </template>
             <template #footer>
                <div v-if="propuestaSeleccionada" class="flex w-full items-center gap-2">
-                  <UTooltip v-if="puedeBorrar" text="Eliminar propuesta">
-                     <UButton
-                        icon="i-lucide-trash-2"
-                        color="error"
-                        variant="ghost"
-                        aria-label="Eliminar propuesta"
-                        @click="
-                           () => {
-                              modalEliminarMostrar = true
-                           }
-                        "
-                     />
-                  </UTooltip>
+                  <div class="flex shrink-0 items-center gap-2">
+                     <UTooltip v-if="puedeEditar" text="Editar propuesta">
+                        <UButton
+                           icon="i-lucide-pen"
+                           color="neutral"
+                           variant="ghost"
+                           aria-label="Editar propuesta"
+                           @click="
+                              () => {
+                                 modalEditarMostrar = true
+                              }
+                           "
+                        />
+                     </UTooltip>
+                     <UTooltip v-if="puedeBorrar" text="Eliminar propuesta">
+                        <UButton
+                           icon="i-lucide-trash-2"
+                           color="error"
+                           variant="ghost"
+                           aria-label="Eliminar propuesta"
+                           @click="
+                              () => {
+                                 modalEliminarMostrar = true
+                              }
+                           "
+                        />
+                     </UTooltip>
+                  </div>
                   <div class="flex flex-1 flex-wrap justify-center gap-2">
                      <UButton
                         icon="i-lucide-message-circle-question"
@@ -529,9 +565,12 @@ async function eliminarPropuesta() {
                         Aceptar
                      </UButton>
                   </div>
-                  <!-- Espaciador simétrico al botón de eliminar, para que el grupo central quede
-                       centrado igual con o sin permiso de borrar. -->
-                  <div v-if="puedeBorrar" class="size-8 shrink-0" aria-hidden="true" />
+                  <!-- Espaciador simétrico al grupo de la izquierda (editar/eliminar), para que el
+                       grupo central quede centrado sin importar qué permisos tenga el usuario. -->
+                  <div v-if="puedeEditar || puedeBorrar" class="invisible flex shrink-0 items-center gap-2" aria-hidden="true">
+                     <UButton v-if="puedeEditar" icon="i-lucide-pen" tabindex="-1" />
+                     <UButton v-if="puedeBorrar" icon="i-lucide-trash-2" tabindex="-1" />
+                  </div>
                </div>
             </template>
          </USlideover>
@@ -607,6 +646,15 @@ async function eliminarPropuesta() {
                </UFormField>
             </div>
          </ConfirmModal>
+
+         <!-- Editar (jefatura) -->
+         <FormularioPropuesta
+            v-model:open="modalEditarMostrar"
+            :catalogos="catalogos"
+            :propuesta="propuestaSeleccionada"
+            modo="staff"
+            @guardado="onGuardadoEdicion"
+         />
 
          <!-- Confirmar eliminar -->
          <ConfirmModal

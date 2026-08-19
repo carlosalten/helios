@@ -2,17 +2,23 @@
 import type { CatalogosPropuesta, ModalidadPropuesta, TtPropuestaConEstado } from '~/types/titulaciones'
 import { MODALIDADES_PROPUESTA } from '~/types/titulaciones'
 
-// Compartido entre /estudiante/propuestas (crear, POST) y /estudiante/propuestas/[id] (editar,
-// PATCH — solo disponible con la propuesta en "Antecedentes solicitados"). `propuesta` presente
-// = modo edición: precarga sus datos y manda el PATCH a ese id en vez de crear una nueva.
+// Compartido entre /estudiante/propuestas (crear, POST), /estudiante/propuestas/[id] (editar,
+// PATCH — solo disponible con la propuesta en "Antecedentes solicitados") y
+// /titulaciones/propuestas (editar como jefatura, `modo: 'staff'`: sin ese gate de estado, pega
+// a un endpoint distinto y no reinicia el flujo de revisión). `propuesta` presente = modo
+// edición: precarga sus datos y manda el PATCH a ese id en vez de crear una nueva. En modo staff
+// siempre viene con `propuesta` (esa vista nunca crea propuestas nuevas).
 const open = defineModel<boolean>('open', { required: true })
 
 const props = defineProps<{
    catalogos: CatalogosPropuesta | null | undefined
    propuesta?: TtPropuestaConEstado | null
+   modo?: 'estudiante' | 'staff'
 }>()
 
 const emit = defineEmits<{ guardado: [] }>()
+
+const esStaff = computed(() => props.modo === 'staff')
 
 const itemsModalidad = MODALIDADES_PROPUESTA.map((m) => ({ label: m, value: m }))
 const itemsRol = computed(() => (props.catalogos?.roles ?? []).map((r) => ({ label: r.nombre, value: r.id })))
@@ -92,7 +98,11 @@ async function enviar() {
    enviando.value = true
    errorEnviar.value = null
    try {
-      const url = props.propuesta ? `/api/estudiante/propuestas/${props.propuesta.id}` : '/api/estudiante/propuestas'
+      const url = esStaff.value
+         ? `/api/titulaciones/propuestas/${props.propuesta?.id}`
+         : props.propuesta
+           ? `/api/estudiante/propuestas/${props.propuesta.id}`
+           : '/api/estudiante/propuestas'
       const method = props.propuesta ? 'PATCH' : 'POST'
       await $fetch(url, {
          method,
@@ -126,7 +136,11 @@ async function enviar() {
    >
       <template #body>
          <p class="mb-4 text-sm text-usm-blue">
-            <template v-if="propuesta">
+            <template v-if="esStaff">
+               Modifica los datos de la propuesta. Los cambios se guardan directamente y no afectan su estado de
+               revisión ni el historial.
+            </template>
+            <template v-else-if="propuesta">
                Modifica los datos que la jefatura te pidió precisar y vuelve a enviarla — quedará de nuevo en estado
                pendiente de revisión.
             </template>
@@ -150,9 +164,11 @@ async function enviar() {
                label="Modalidad"
                name="modalidad"
                :description="
-                  propuesta
-                     ? 'La modalidad no se puede cambiar una vez ingresada la propuesta.'
-                     : 'Campo obligatorio. La ruta determina qué antecedentes se solicitan a continuación.'
+                  esStaff
+                     ? 'Cambiarla puede requerir completar campos distintos más abajo.'
+                     : propuesta
+                       ? 'La modalidad no se puede cambiar una vez ingresada la propuesta.'
+                       : 'Campo obligatorio. La ruta determina qué antecedentes se solicitan a continuación.'
                "
                :ui="{ description: 'text-[13px]' }"
             >
@@ -160,7 +176,7 @@ async function enviar() {
                   v-model="form.modalidad"
                   :items="itemsModalidad"
                   value-key="value"
-                  :disabled="!!propuesta"
+                  :disabled="!esStaff && !!propuesta"
                   class="w-full"
                />
             </UFormField>
@@ -236,7 +252,7 @@ async function enviar() {
             >Cancelar</UButton
          >
          <UButton type="submit" form="form-propuesta" :loading="enviando" :disabled="!puedeEnviar">
-            {{ propuesta ? 'Enviar cambios' : 'Enviar propuesta' }}
+            {{ esStaff ? 'Guardar cambios' : propuesta ? 'Enviar cambios' : 'Enviar propuesta' }}
          </UButton>
       </template>
    </UModal>
