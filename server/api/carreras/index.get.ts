@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
       ['/carreras/asignacion', 'ver'],
       ['/planes', 'ver'],
       ['/horario', 'ver'],
+      ['/ayudantias', 'ver'],
    ])
 
    return prisma.carrera.findMany({

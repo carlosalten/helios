@@ -76,6 +76,25 @@ export const editarPersonaSchema = z.object({
    emoji: emojiSchema,
 })
 
+// Alta/edición de un Ayudante desde /ayudantias/gestion: mismo criterio de nombre/email que
+// crearPersonaSchema, pero sin rolId/jornadaLaboral/emoji — el endpoint fija el rol en
+// 'Ayudante', nunca a elección de quien llena el formulario.
+export const crearAyudanteSchema = z.object({
+   email: z
+      .string({ error: 'El email es requerido' })
+      .trim()
+      .toLowerCase()
+      .email('Email inválido')
+      .max(50, 'Máximo 50 caracteres'),
+   nombre: nombrePropioSchema('El nombre es requerido'),
+   apellido: nombrePropioSchema('El apellido es requerido'),
+})
+
+export const editarAyudanteSchema = z.object({
+   nombre: nombrePropioSchema('El nombre es requerido'),
+   apellido: nombrePropioSchema('El apellido es requerido'),
+})
+
 export const cambiarRolPersonaSchema = z.object({
    rolId: z.number({ error: 'El rol es requerido' }).int(),
 })

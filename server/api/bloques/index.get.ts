@@ -11,6 +11,7 @@ export default defineEventHandler(async (event) => {
       ['/horario/profesor', 'ver'],
       ['/reservas/horario', 'ver'],
       ['/reservas/imprimir', 'ver'],
+      ['/ayudantias', 'ver'],
    ])
 
    const bloques = await prisma.bloque.findMany({

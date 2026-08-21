@@ -1,7 +1,10 @@
 // Borra "esta reserva y las siguientes": la seleccionada y todas las de su misma serie con
 // fecha igual o posterior.
 export default defineEventHandler(async (event) => {
-   const usuario = await requierePermiso(event, '/reservas/horario', 'editar')
+   const usuario = await requiereAlgunPermiso(event, [
+      ['/reservas/horario', 'editar'],
+      ['/ayudantias', 'editar'],
+   ])
 
    const id = Number(getRouterParam(event, 'id'))
    if (!Number.isInteger(id)) throw createError({ statusCode: 400, message: 'ID inválido' })

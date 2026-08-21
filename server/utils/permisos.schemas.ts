@@ -7,6 +7,9 @@ import { z } from 'zod'
 export const RUTAS_PERMISO = [
    '/asignaturas',
    '/asignaturas/equivalencias',
+   '/ayudantias',
+   '/ayudantias/gestion',
+   '/ayudantias/resumen',
    '/bloques',
    '/bloques/copiar',
    '/carreras',

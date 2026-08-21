@@ -4,6 +4,7 @@ export default defineEventHandler(async (event) => {
    await requiereAlgunPermiso(event, [
       ['/reservas/tipos', 'ver'],
       ['/reservas/horario', 'ver'],
+      ['/ayudantias', 'ver'],
    ])
 
    return prisma.tipoReserva.findMany({ orderBy: { nombre: 'asc' } })

@@ -14,21 +14,9 @@ const { data, status, error, refresh } = await useFetch<DatosPantallaPublica>(
    () => `/api/pantallas/publico/${codigo.value}`
 )
 
-// Refresco frecuente: a diferencia de un horario semanal, "en curso"/"próximas" cambia solo
-// con que pase el tiempo (una clase empieza o termina) sin que nadie edite nada — un refresco
-// cada 5 minutos, como en otras páginas, dejaría una clase "en curso" en pantalla varios
-// minutos después de terminada.
-const UN_MINUTO_MS = 60 * 1000
-let temporizadorRefresco: ReturnType<typeof setInterval> | null = null
-onMounted(() => {
-   temporizadorRefresco = setInterval(() => refresh(), UN_MINUTO_MS)
-})
-onUnmounted(() => {
-   if (temporizadorRefresco) clearInterval(temporizadorRefresco)
-})
-
 // Reloj visible en el header: además de ser útil en un hall, deja claro de un vistazo que la
-// pantalla sigue viva y no se congeló.
+// pantalla sigue viva y no se congeló. Se declara antes del refresco porque `estaEnHorario`
+// (más abajo) depende de `ahora`.
 const ahora = ref(new Date())
 let temporizadorReloj: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
@@ -42,6 +30,43 @@ onUnmounted(() => {
 const horaActual = computed(
    () => `${String(ahora.value.getHours()).padStart(2, '0')}:${String(ahora.value.getMinutes()).padStart(2, '0')}`
 )
+
+// Ventana horaria en que la pantalla debe refrescarse (configurable por pantalla en
+// /salas/pantallas) — nulo/nulo = sin restricción, siempre en horario. Si `horaFin` es menor
+// que `horaInicio`, la ventana cruza la medianoche (ej. 20:00–06:00). Un rango de 0 minutos
+// (por algún dato corrupto) se trata como "sin restricción" para no dejar la pantalla apagada
+// todo el día por error.
+function horaAMinutos(horaHHMM: string) {
+   const [h, m] = horaHHMM.split(':').map(Number)
+   return h! * 60 + m!
+}
+const estaEnHorario = computed(() => {
+   const { horaInicio, horaFin } = data.value?.pantalla ?? {}
+   if (!horaInicio || !horaFin) return true
+   const inicioMin = horaAMinutos(horaInicio)
+   const finMin = horaAMinutos(horaFin)
+   if (inicioMin === finMin) return true
+   const ahoraMin = ahora.value.getHours() * 60 + ahora.value.getMinutes()
+   if (inicioMin < finMin) return ahoraMin >= inicioMin && ahoraMin < finMin
+   return ahoraMin >= inicioMin || ahoraMin < finMin
+})
+
+// Refresco frecuente: a diferencia de un horario semanal, "en curso"/"próximas" cambia solo
+// con que pase el tiempo (una clase empieza o termina) sin que nadie edite nada — un refresco
+// cada 5 minutos, como en otras páginas, dejaría una clase "en curso" en pantalla varios
+// minutos después de terminada. Fuera de la ventana configurada no se pide nada al servidor —
+// la pantalla queda en modo de ahorro (ver plantilla) hasta que `estaEnHorario` vuelva a ser
+// verdadero, sin gastar tráfico de madrugada.
+const UN_MINUTO_MS = 60 * 1000
+let temporizadorRefresco: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+   temporizadorRefresco = setInterval(() => {
+      if (estaEnHorario.value) refresh()
+   }, UN_MINUTO_MS)
+})
+onUnmounted(() => {
+   if (temporizadorRefresco) clearInterval(temporizadorRefresco)
+})
 
 /* ── Slideshow: alterna entre "en curso" y "próximas" ────────────────────
    Solo dos vistas fijas (a diferencia de la versión anterior, que rotaba una sala por slide):
@@ -128,6 +153,16 @@ function colorDe(clase: ClasePantalla) {
                <p class="text-white">Esta pantalla todavía no tiene salas asignadas.</p>
             </div>
 
+            <!-- Fuera de la ventana horaria configurada: modo de ahorro, sin refrescar. -->
+            <div v-else-if="!estaEnHorario" class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+               <UIcon name="i-lucide-moon" class="size-14 text-white/30" />
+               <p class="text-2xl font-semibold text-white">{{ data.pantalla.nombre }}</p>
+               <p class="text-white">
+                  Fuera de horario de exhibición ({{ data.pantalla.horaInicio }}–{{ data.pantalla.horaFin }}).
+               </p>
+               <p class="shrink-0 font-mono text-3xl tabular-nums text-white/70">{{ horaActual }}</p>
+            </div>
+
             <template v-else>
                <!-- Header -->
                <div class="mb-6 flex shrink-0 items-start justify-between gap-4">
@@ -195,11 +230,15 @@ function colorDe(clase: ClasePantalla) {
                            class="truncate text-xl font-bold text-white"
                            :class="clase.cancelada ? 'line-through opacity-70' : ''"
                         >
-                           {{ clase.esClase && clase.asignaturaNombre ? clase.asignaturaNombre : clase.titulo }}
+                           {{ (clase.esClase && clase.asignaturaNombre) || clase.subtitulo || clase.titulo }}
                         </p>
                         <p v-if="clase.esClase && clase.asignaturaCodigo" class="truncate text-white">
                            {{ clase.asignaturaCodigo }} · Paralelo {{ clase.paraleloCodigo }}
                         </p>
+                        <!-- Ayudantía sin sesión de paralelo real: el subtítulo (nombre de la asignatura) ocupó
+                             el título grande de arriba, así que acá el título (código+paralelo) baja a detalle,
+                             mismo lugar que ocupa "código · Paralelo N" en una clase real. -->
+                        <p v-else-if="clase.subtitulo" class="truncate text-white">{{ clase.titulo }}</p>
                         <p v-if="clase.esClase && clase.carreraNombre" class="truncate text-white">
                            {{ clase.carreraNombre }}
                         </p>

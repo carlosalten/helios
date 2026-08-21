@@ -9,6 +9,7 @@ export default defineEventHandler(async (event) => {
       ['/salas/asignacion', 'ver'],
       ['/reservas/horario', 'ver'],
       ['/reservas/imprimir', 'ver'],
+      ['/ayudantias', 'ver'],
    ])
 
    return prisma.sala.findMany({

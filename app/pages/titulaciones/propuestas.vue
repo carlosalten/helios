@@ -397,6 +397,11 @@ async function eliminarPropuesta() {
                         </p>
                      </div>
                   </template>
+                  <template #titulo-cell="{ row }">
+                     <p class="max-w-md min-w-48 whitespace-normal wrap-break-word text-usm-text dark:text-white">
+                        {{ row.original.titulo }}
+                     </p>
+                  </template>
                   <template #estado-cell="{ row }">
                      <UBadge :color="colorEstado(ultimoEstado(row.original))" variant="subtle">
                         {{ ultimoEstado(row.original) ?? 'Sin estado' }}

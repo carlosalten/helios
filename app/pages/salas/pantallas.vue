@@ -41,6 +41,7 @@ const columnas: TableColumn<PantallaPublica>[] = [
    { id: 'salas', header: 'Salas', size: 90 },
    { accessorKey: 'segundosPorSlide', header: 'Segundos por slide', size: 140 },
    { id: 'proximasPorSala', header: 'Próximas por sala', size: 140 },
+   { id: 'horario', header: 'Horario de exhibición', size: 150 },
    { id: 'url', header: 'URL pública' },
    { id: 'acciones', header: '', size: 110 },
 ]
@@ -49,6 +50,18 @@ const columnas: TableColumn<PantallaPublica>[] = [
 // (server/api/pantallas/publico/[codigo].get.ts).
 function labelProximasPorSala(valor: number | null) {
    return valor == null ? 'Todas' : String(valor)
+}
+
+// GET /api/pantallas devuelve horaInicio/horaFin como DateTime ISO completo (igual que
+// Bloque.inicio/Reserva.inicio en el resto de la app) — se recorta acá, no en el backend.
+function horaDeISO(horaISO: string) {
+   return horaISO.slice(11, 16)
+}
+
+function labelHorario(pantalla: PantallaPublica) {
+   return pantalla.horaInicio && pantalla.horaFin
+      ? `${horaDeISO(pantalla.horaInicio)}–${horaDeISO(pantalla.horaFin)}`
+      : '24 horas'
 }
 
 /* ── Panel de detalle: salas de la pantalla seleccionada ──────────────────── */
@@ -107,7 +120,14 @@ async function toggleSala(salaCodigo: string) {
 const modalCrearMostrar = ref(false)
 // `proximasPorSala: null` por defecto ("Todas") — mismo default que la columna en BD, para que
 // una pantalla nueva se comporte igual que las existentes hasta que alguien la acote a mano.
-const formCrear = reactive({ nombre: '', codigo: '', segundosPorSlide: 15, proximasPorSala: null as number | null })
+const formCrear = reactive({
+   nombre: '',
+   codigo: '',
+   segundosPorSlide: 15,
+   proximasPorSala: null as number | null,
+   horaInicio: null as string | null,
+   horaFin: null as string | null,
+})
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 
@@ -116,6 +136,8 @@ function abrirCrear() {
    formCrear.codigo = ''
    formCrear.segundosPorSlide = 15
    formCrear.proximasPorSala = null
+   formCrear.horaInicio = null
+   formCrear.horaFin = null
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -131,6 +153,8 @@ async function guardar() {
             codigo: formCrear.codigo,
             segundosPorSlide: Number(formCrear.segundosPorSlide),
             proximasPorSala: formCrear.proximasPorSala,
+            horaInicio: formCrear.horaInicio,
+            horaFin: formCrear.horaFin,
          },
       })
       modalCrearMostrar.value = false
@@ -146,7 +170,14 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const pantallaEditar = ref<PantallaPublica | null>(null)
-const formEditar = reactive({ nombre: '', codigo: '', segundosPorSlide: 15, proximasPorSala: null as number | null })
+const formEditar = reactive({
+   nombre: '',
+   codigo: '',
+   segundosPorSlide: 15,
+   proximasPorSala: null as number | null,
+   horaInicio: null as string | null,
+   horaFin: null as string | null,
+})
 const errorEditar = ref<string | null>(null)
 
 function abrirEditar(pantalla: PantallaPublica) {
@@ -155,6 +186,8 @@ function abrirEditar(pantalla: PantallaPublica) {
    formEditar.codigo = pantalla.codigo
    formEditar.segundosPorSlide = pantalla.segundosPorSlide
    formEditar.proximasPorSala = pantalla.proximasPorSala
+   formEditar.horaInicio = pantalla.horaInicio ? horaDeISO(pantalla.horaInicio) : null
+   formEditar.horaFin = pantalla.horaFin ? horaDeISO(pantalla.horaFin) : null
    errorEditar.value = null
    modalEditarMostrar.value = true
 }
@@ -171,6 +204,8 @@ async function guardarEditar() {
             codigo: formEditar.codigo,
             segundosPorSlide: Number(formEditar.segundosPorSlide),
             proximasPorSala: formEditar.proximasPorSala,
+            horaInicio: formEditar.horaInicio,
+            horaFin: formEditar.horaFin,
          },
       })
       modalEditarMostrar.value = false
@@ -192,6 +227,18 @@ function alternarTodasCrear(todas: boolean | 'indeterminate') {
 }
 function alternarTodasEditar(todas: boolean | 'indeterminate') {
    formEditar.proximasPorSala = todas === true ? null : 1
+}
+
+// Igual criterio que alternarTodasCrear/Editar: "sin restricción" (24 horas) se guarda como
+// horaInicio/horaFin nulos; al desmarcarlo, arranca en un rango sensato (jornada de oficina)
+// en vez de dejarlo vacío.
+function alternarSinRestriccionCrear(sinRestriccion: boolean | 'indeterminate') {
+   formCrear.horaInicio = sinRestriccion === true ? null : '07:00'
+   formCrear.horaFin = sinRestriccion === true ? null : '22:00'
+}
+function alternarSinRestriccionEditar(sinRestriccion: boolean | 'indeterminate') {
+   formEditar.horaInicio = sinRestriccion === true ? null : '07:00'
+   formEditar.horaFin = sinRestriccion === true ? null : '22:00'
 }
 
 /* ── Eliminar ────────────────────────────────────────────── */
@@ -262,6 +309,11 @@ async function confirmarEliminar() {
                   <template #proximasPorSala-cell="{ row }">
                      <UBadge variant="subtle" color="neutral">
                         {{ labelProximasPorSala(row.original.proximasPorSala) }}
+                     </UBadge>
+                  </template>
+                  <template #horario-cell="{ row }">
+                     <UBadge variant="subtle" :color="row.original.horaInicio ? 'info' : 'neutral'">
+                        {{ labelHorario(row.original) }}
                      </UBadge>
                   </template>
                   <template #url-cell="{ row }">
@@ -436,6 +488,34 @@ async function confirmarEliminar() {
                      />
                   </div>
                </UFormField>
+               <UFormField
+                  label="Horario de exhibición"
+                  description="Fuera de este horario la pantalla deja de refrescarse (modo de ahorro) — útil para la madrugada, cuando nadie la ve."
+               >
+                  <div class="flex flex-wrap items-center gap-3">
+                     <div v-if="formCrear.horaInicio != null" class="flex items-center gap-2">
+                        <UInput
+                           :model-value="formCrear.horaInicio ?? ''"
+                           type="time"
+                           class="w-32"
+                           @update:model-value="formCrear.horaInicio = String($event)"
+                        />
+                        <span class="text-usm-text-muted dark:text-slate-400">a</span>
+                        <UInput
+                           :model-value="formCrear.horaFin ?? ''"
+                           type="time"
+                           class="w-32"
+                           @update:model-value="formCrear.horaFin = String($event)"
+                        />
+                     </div>
+                     <UCheckbox
+                        :model-value="formCrear.horaInicio == null"
+                        label="Sin restricción (24 horas)"
+                        class="shrink-0"
+                        @update:model-value="alternarSinRestriccionCrear"
+                     />
+                  </div>
+               </UFormField>
             </UForm>
          </template>
          <template #footer>
@@ -497,6 +577,34 @@ async function confirmarEliminar() {
                         label="Todas"
                         class="shrink-0"
                         @update:model-value="alternarTodasEditar"
+                     />
+                  </div>
+               </UFormField>
+               <UFormField
+                  label="Horario de exhibición"
+                  description="Fuera de este horario la pantalla deja de refrescarse (modo de ahorro) — útil para la madrugada, cuando nadie la ve."
+               >
+                  <div class="flex flex-wrap items-center gap-3">
+                     <div v-if="formEditar.horaInicio != null" class="flex items-center gap-2">
+                        <UInput
+                           :model-value="formEditar.horaInicio ?? ''"
+                           type="time"
+                           class="w-32"
+                           @update:model-value="formEditar.horaInicio = String($event)"
+                        />
+                        <span class="text-usm-text-muted dark:text-slate-400">a</span>
+                        <UInput
+                           :model-value="formEditar.horaFin ?? ''"
+                           type="time"
+                           class="w-32"
+                           @update:model-value="formEditar.horaFin = String($event)"
+                        />
+                     </div>
+                     <UCheckbox
+                        :model-value="formEditar.horaInicio == null"
+                        label="Sin restricción (24 horas)"
+                        class="shrink-0"
+                        @update:model-value="alternarSinRestriccionEditar"
                      />
                   </div>
                </UFormField>
