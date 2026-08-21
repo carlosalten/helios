@@ -10,6 +10,9 @@ export interface Rol {
    nombre: string
    // Mayor número = más alto en la jerarquía. Ver SesionUsuario.jerarquiaRol.
    jerarquia: number
+   // Si las personas de este rol aparecen en el panel "Profesores" de /horario — administrable
+   // desde /configuracion. Ver app/pages/horario/index.vue.
+   mostrarEnHorarioProfesores: boolean
 }
 
 export interface PersonaBase {

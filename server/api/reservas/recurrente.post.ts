@@ -3,7 +3,10 @@ import { randomUUID } from 'node:crypto'
 // Crea una reserva recurrente semanal: una fila por semana entre `fecha` y `repetirHasta`
 // (inclusive), todas con el mismo `serieId` para poder editarlas/borrarlas juntas después.
 export default defineEventHandler(async (event) => {
-   const usuario = await requierePermiso(event, '/reservas/horario', 'crear')
+   const usuario = await requiereAlgunPermiso(event, [
+      ['/reservas/horario', 'crear'],
+      ['/ayudantias', 'crear'],
+   ])
 
    const body = await readBody(event)
    const parsed = crearReservaRecurrenteSchema.safeParse(body)
@@ -11,16 +14,19 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 422, message: parsed.error.issues[0]?.message ?? 'Datos inválidos' })
    }
 
-   const [sala, persona, tipoReserva] = await Promise.all([
+   const [sala, persona, tipoReserva, paralelo] = await Promise.all([
       prisma.sala.findUnique({ where: { codigo: parsed.data.salaCodigo } }),
       // personaId nulo = reserva sin responsable designado: no hay a quién buscar.
       parsed.data.personaId == null ? null : prisma.persona.findUnique({ where: { id: parsed.data.personaId } }),
       prisma.tipoReserva.findUnique({ where: { id: parsed.data.tipoReservaId } }),
+      // paraleloId nulo = reserva que no es una Ayudantía: no hay a quién buscar.
+      parsed.data.paraleloId == null ? null : prisma.paralelo.findUnique({ where: { id: parsed.data.paraleloId } }),
    ])
    if (!sala) throw createError({ statusCode: 404, message: 'Sala no encontrada' })
    if (parsed.data.personaId != null && !persona)
       throw createError({ statusCode: 404, message: 'Persona no encontrada' })
    if (!tipoReserva) throw createError({ statusCode: 404, message: 'Tipo de reserva no encontrado' })
+   if (parsed.data.paraleloId != null && !paralelo) throw createError({ statusCode: 404, message: 'Paralelo no encontrado' })
 
    const unaSemanaMs = 7 * 24 * 60 * 60 * 1000
    const primeraFecha = new Date(`${parsed.data.fecha}T00:00:00.000Z`)
@@ -38,6 +44,8 @@ export default defineEventHandler(async (event) => {
       data: fechas.map((fecha) => ({
          salaCodigo: parsed.data.salaCodigo,
          titulo: parsed.data.titulo,
+         subtitulo: parsed.data.subtitulo ?? null,
+         paraleloId: parsed.data.paraleloId ?? null,
          fecha,
          inicio,
          fin,

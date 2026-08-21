@@ -38,6 +38,11 @@ export const crearReservaSchema = z
          .trim()
          .min(1, 'El título es requerido')
          .max(50, 'Máximo 50 caracteres'),
+      // Solo lo usan las Ayudantías (nombre de la asignatura) — ver Reserva.subtitulo en
+      // schema.prisma. Nulo/ausente en cualquier otro tipo de reserva.
+      subtitulo: z.string().trim().max(100, 'Máximo 100 caracteres').nullable().optional(),
+      // Idem: solo lo usan las Ayudantías — ver Reserva.paraleloId en schema.prisma.
+      paraleloId: z.number().int().nullable().optional(),
       fecha: z
          .string({ error: 'La fecha es requerida' })
          .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida')
@@ -83,6 +88,11 @@ export const crearReservaRecurrenteSchema = z
          .trim()
          .min(1, 'El título es requerido')
          .max(50, 'Máximo 50 caracteres'),
+      // Solo lo usan las Ayudantías (nombre de la asignatura) — ver Reserva.subtitulo en
+      // schema.prisma. Nulo/ausente en cualquier otro tipo de reserva.
+      subtitulo: z.string().trim().max(100, 'Máximo 100 caracteres').nullable().optional(),
+      // Idem: solo lo usan las Ayudantías — ver Reserva.paraleloId en schema.prisma.
+      paraleloId: z.number().int().nullable().optional(),
       fecha: z.string({ error: 'La fecha es requerida' }).regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'),
       repetirHasta: z
          .string({ error: 'La fecha de término de la recurrencia es requerida' })

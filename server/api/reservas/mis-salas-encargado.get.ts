@@ -7,6 +7,7 @@ export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [
       ['/reservas/horario', 'ver'],
       ['/reservas/imprimir', 'ver'],
+      ['/ayudantias', 'ver'],
    ])
 
    const persona = await prisma.persona.findUnique({ where: { email: usuario.email } })

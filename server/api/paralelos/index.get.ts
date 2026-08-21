@@ -11,6 +11,7 @@ export default defineEventHandler(async (event) => {
       ['/paralelos', 'ver'],
       ['/paralelos/asignacion', 'ver'],
       ['/horario', 'ver'],
+      ['/ayudantias', 'ver'],
    ])
 
    return prisma.paralelo.findMany({

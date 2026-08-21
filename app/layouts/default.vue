@@ -129,6 +129,16 @@ const gruposNav: NavItem[][] = [
             { to: '/reservas/tipos', label: 'Tipos de reserva' },
          ],
       },
+      {
+         to: '/ayudantias',
+         icon: 'i-lucide-user-check',
+         label: 'Ayudantías',
+         children: [
+            { to: '/ayudantias', label: 'Horario de ayudantías' },
+            { to: '/ayudantias/resumen', label: 'Resumen' },
+            { to: '/ayudantias/gestion', label: 'Gestión de ayudantes' },
+         ],
+      },
    ],
    [
       {
@@ -229,6 +239,9 @@ const pageTitles: Record<string, string> = {
    '/reservas/imprimir': 'Imprimir horarios',
    '/reservas/resumen': 'Resumen de reservas',
    '/reservas/tipos': 'Tipos de reserva',
+   '/ayudantias': 'Ayudantías',
+   '/ayudantias/resumen': 'Resumen de ayudantías',
+   '/ayudantias/gestion': 'Gestión de ayudantes',
    '/titulaciones/procesos': 'Procesos de titulación',
    '/titulaciones/estudiantes': 'Estudiantes',
    '/titulaciones/grupos': 'Grupos',

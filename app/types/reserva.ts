@@ -56,6 +56,9 @@ export interface Reserva {
    id: number
    salaCodigo: string
    titulo: string
+   // Solo lo usan las Ayudantías (nombre de la asignatura) — ver /ayudantias. Nulo en
+   // cualquier otro tipo de reserva.
+   subtitulo: string | null
    fecha: string
    inicio: string
    fin: string
@@ -63,6 +66,9 @@ export interface Reserva {
    personaId: number | null
    tipoReservaId: number
    sesionParaleloId: number | null
+   // Solo lo usan las Ayudantías creadas desde /ayudantias — ver /ayudantias/resumen. Nulo en
+   // cualquier otro tipo de reserva, incluidas las de clases (que usan sesionParaleloId).
+   paraleloId: number | null
    // Comparte serieId toda ocurrencia generada por la misma reserva recurrente (semanal);
    // null en una reserva no recurrente.
    serieId: string | null

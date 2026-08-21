@@ -1355,22 +1355,24 @@ watch(editandoAlgo, async (ocupado) => {
                                              </span>
                                           </div>
                                           <span
-                                             class="inline-flex min-w-0 items-center gap-1 truncate text-xs font-bold"
+                                             class="flex min-w-0 items-start gap-1 text-xs font-bold"
                                              :class="rp.reserva.cancelada ? 'line-through opacity-70' : ''"
                                           >
                                              <UIcon
                                                 v-if="rp.reserva.serieId"
                                                 name="i-lucide-repeat"
-                                                class="size-3 shrink-0"
+                                                class="mt-0.5 size-3 shrink-0"
                                                 title="Reserva recurrente"
                                              />
                                              <UIcon
                                                 v-if="!rp.reserva.publica"
                                                 name="i-lucide-eye-off"
-                                                class="size-3 shrink-0"
+                                                class="mt-0.5 size-3 shrink-0"
                                                 title="No se incluye en la vista impresa ni en la pantalla pública"
                                              />
-                                             <span class="truncate">{{ rp.reserva.titulo }}</span>
+                                             <span class="wrap-break-word whitespace-normal">{{
+                                                rp.reserva.titulo
+                                             }}</span>
                                           </span>
                                           <template v-if="rp.reserva.sesionParalelo">
                                              <div class="truncate">{{ nombreAsignaturaDe(rp.reserva) }}</div>
@@ -1381,6 +1383,12 @@ watch(editandoAlgo, async (ocupado) => {
                                                 }}
                                              </div>
                                           </template>
+                                          <!-- Reservas que no son de clases (reuniones, eventos, Ayudantías creadas a mano,
+                                               etc.) no traen asignatura/carrera que mostrar — se muestra en su lugar quién
+                                               figura como responsable, si tiene uno asignado. -->
+                                          <div v-else-if="rp.reserva.persona" class="truncate">
+                                             {{ rp.reserva.persona.nombre }} {{ rp.reserva.persona.apellido }}
+                                          </div>
                                        </div>
                                     </div>
                                  </td>

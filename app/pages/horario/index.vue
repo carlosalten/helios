@@ -231,7 +231,10 @@ const bloques = computed(() =>
       .filter((b) => b.semestreId === semestreSeleccionadoId.value)
       .sort((a, b) => a.numero - b.numero)
 )
-const profesores = computed(() => personas.value ?? [])
+// Solo personas cuyo rol está marcado para aparecer acá (administrable desde /configuracion) —
+// por defecto todos los roles lo tienen activo, así que sin configurar nada el comportamiento
+// es el mismo de siempre.
+const profesores = computed(() => (personas.value ?? []).filter((p) => p.rol?.mostrarEnHorarioProfesores !== false))
 
 const busquedaSala = ref('')
 const salasFiltradas = computed(() =>

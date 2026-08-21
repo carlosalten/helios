@@ -1,7 +1,10 @@
 // "Cancelar reserva": borra la fila directamente, sin marcar un estado. La constraint
 // `reserva_sin_solapamiento` deja de considerar esa reserva de inmediato.
 export default defineEventHandler(async (event) => {
-   const usuario = await requierePermiso(event, '/reservas/horario', 'editar')
+   const usuario = await requiereAlgunPermiso(event, [
+      ['/reservas/horario', 'editar'],
+      ['/ayudantias', 'editar'],
+   ])
 
    const id = Number(getRouterParam(event, 'id'))
    if (!Number.isInteger(id)) throw createError({ statusCode: 400, message: 'ID inválido' })

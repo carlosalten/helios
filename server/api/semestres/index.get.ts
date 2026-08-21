@@ -20,6 +20,7 @@ export default defineEventHandler(async (event) => {
       ['/reservas/imprimir', 'ver'],
       ['/bloques', 'ver'],
       ['/bloques/copiar', 'ver'],
+      ['/ayudantias', 'ver'],
    ])
 
    return prisma.semestre.findMany({ orderBy: { fechaInicio: 'desc' } })

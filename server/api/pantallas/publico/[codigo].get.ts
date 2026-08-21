@@ -51,6 +51,7 @@ interface ClaseResumen {
    id: number
    salaCodigo: string
    titulo: string
+   subtitulo: string | null
    esClase: boolean
    asignaturaCodigo: string | null
    asignaturaNombre: string | null
@@ -128,7 +129,15 @@ export default defineEventHandler(async (event) => {
    if (!pantalla) throw createError({ statusCode: 404, message: 'Pantalla no encontrada' })
 
    const respuestaBase = {
-      pantalla: { nombre: pantalla.nombre, codigo: pantalla.codigo, segundosPorSlide: pantalla.segundosPorSlide },
+      pantalla: {
+         nombre: pantalla.nombre,
+         codigo: pantalla.codigo,
+         segundosPorSlide: pantalla.segundosPorSlide,
+         // Ventana horaria de refresco: el cliente decide con esto si sigue pidiendo datos o
+         // entra en modo de ahorro — ver app/pages/pantallas/[codigo].vue.
+         horaInicio: pantalla.horaInicio ? aHora(pantalla.horaInicio) : null,
+         horaFin: pantalla.horaFin ? aHora(pantalla.horaFin) : null,
+      },
    }
 
    const salaCodigos = pantalla.salas.map((ps) => ps.salaCodigo)
@@ -185,6 +194,7 @@ export default defineEventHandler(async (event) => {
          id: r.id,
          salaCodigo: r.salaCodigo,
          titulo: r.titulo,
+         subtitulo: r.subtitulo,
          esClase: TIPOS_CLASE.includes(r.tipoReserva.nombre),
          asignaturaCodigo: paralelo?.asignaturaPlan.asignatura.codigo ?? null,
          // Nombre corto si la asignatura tiene uno definido, si no el completo — mismo criterio

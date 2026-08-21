@@ -35,6 +35,9 @@ export const RUTA_PERMISO_PERSONAS_GESTION = '/personas/gestion'
 export const RUTAS_PERMISO = [
    '/asignaturas',
    '/asignaturas/equivalencias',
+   '/ayudantias',
+   '/ayudantias/gestion',
+   '/ayudantias/resumen',
    '/bloques',
    '/bloques/copiar',
    '/carreras',

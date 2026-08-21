@@ -24,6 +24,12 @@ model Rol {
   // server/api/personas/[id]/rol.patch.ts. 'Administrador' tiene bypass total, igual que en
   // requierePermiso, sin importar este valor.
   jerarquia Int       @default(0)
+  // Si las personas de este rol aparecen como profesores seleccionables/arrastrables en el
+  // panel "Profesores" de /horario (ver app/pages/horario/index.vue y
+  // app/pages/configuracion/index.vue, donde se administra). Default true: hasta que un
+  // Administrador lo desmarque, el comportamiento es el mismo de siempre (todas las personas
+  // aparecen, sin filtrar por rol).
+  mostrarEnHorarioProfesores Boolean @default(true) @map("mostrar_en_horario_profesores")
   personas  Persona[]
 
   @@map("rol")
@@ -247,9 +253,12 @@ model Paralelo {
   asignaturaPlanId Int     @map("asignatura_plan_id")
   cursoId          Int     @map("curso_id")
 
-  asignaturaPlan AsignaturaPlan   @relation(fields: [asignaturaPlanId], references: [id])
-  curso          Curso            @relation(fields: [cursoId], references: [id])
-  sesiones       SesionParalelo[]
+  asignaturaPlan    AsignaturaPlan   @relation(fields: [asignaturaPlanId], references: [id])
+  curso             Curso            @relation(fields: [cursoId], references: [id])
+  sesiones          SesionParalelo[]
+  // Ayudantías (Reserva.paraleloId) creadas desde /ayudantias para este paralelo — distinto de
+  // `sesiones`, que son las clases propiamente tales.
+  reservasAyudantia Reserva[]
 
   @@index([asignaturaPlanId])
   @@index([cursoId])
@@ -442,6 +451,14 @@ model PantallaPublica {
   // que quedan las pantallas ya creadas al agregar esta columna, para no cambiarles el
   // comportamiento actual.
   proximasPorSala  Int?   @map("proximas_por_sala")
+  // Ventana horaria en que la pantalla debe refrescarse (alternar entre "en curso"/
+  // "próximas") — fuera de ella queda en modo de ahorro, sin volver a pedir datos al servidor
+  // (ver app/pages/pantallas/[codigo].vue). Nulo/nulo = sin restricción, se refresca las 24
+  // horas — comportamiento actual, y el que conservan las pantallas ya creadas al agregar esta
+  // columna. Van siempre juntos (o los dos nulos o los dos con valor, validado en el propio
+  // endpoint). Si horaFin < horaInicio, la ventana cruza la medianoche (ej. 20:00–06:00).
+  horaInicio DateTime? @db.Time @map("hora_inicio")
+  horaFin    DateTime? @db.Time @map("hora_fin")
 
   salas PantallaPublicaSala[]
 
@@ -486,6 +503,10 @@ model Reserva {
   id               Int      @id @default(autoincrement())
   salaCodigo       String   @map("sala_codigo") @db.VarChar(20)
   titulo           String   @db.VarChar(50)
+  // Nulo: la mayoría de las reservas no lo necesitan. Lo usan las Ayudantías (nombre de la
+  // asignatura) para complementar el título (código de asignatura + paralelo) — ver
+  // /ayudantias. VarChar(100) porque debe caber Asignatura.nombre completo.
+  subtitulo        String?  @db.VarChar(100)
   fecha            DateTime @db.Date
   inicio           DateTime @db.Time
   fin              DateTime @db.Time
@@ -495,6 +516,11 @@ model Reserva {
   personaId        Int?     @map("persona_id")
   tipoReservaId    Int      @map("tipo_reserva_id")
   sesionParaleloId Int?     @map("sesion_paralelo_id")
+  // Paralelo de la ayudantía cuando la reserva se creó desde /ayudantias (carrera → asignatura
+  // → paralelo). Nulo en cualquier otro caso, incluidas las reservas de clases, que usan
+  // sesionParaleloId en su lugar — ver /ayudantias/resumen, que depende de este campo para
+  // mostrar carrera/plan/asignatura/paralelo sin tener que parsear título/subtítulo.
+  paraleloId       Int?     @map("paralelo_id")
   // Comparte un mismo serieId todas las ocurrencias generadas por una reserva recurrente
   // (semanal); null en una reserva no recurrente. No hay un campo booleano "recurrente"
   // aparte: la recurrencia se sabe por si serieId es null o no.
@@ -517,10 +543,12 @@ model Reserva {
   persona        Persona?        @relation(fields: [personaId], references: [id])
   tipoReserva    TipoReserva     @relation(fields: [tipoReservaId], references: [id])
   sesionParalelo SesionParalelo? @relation(fields: [sesionParaleloId], references: [id])
+  paralelo       Paralelo?       @relation(fields: [paraleloId], references: [id])
 
   @@index([salaCodigo, fecha])
   @@index([personaId])
   @@index([sesionParaleloId])
+  @@index([paraleloId])
   @@index([fecha])
   @@index([serieId])
   @@map("reserva")

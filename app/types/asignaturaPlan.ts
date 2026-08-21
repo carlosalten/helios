@@ -5,7 +5,14 @@ export interface AsignaturaPlan {
    semestre: number
    // Electiva en este plan: se puede crear su paralelo en un curso de cualquier semestre.
    esElectiva: boolean
-   asignatura: { id: number; codigo: string; nombre: string; bloquesTeoria: number; bloquesPractica: number }
+   asignatura: {
+      id: number
+      codigo: string
+      nombre: string
+      nombreCorto: string | null
+      bloquesTeoria: number
+      bloquesPractica: number
+   }
    plan: {
       id: number
       numero: number
