@@ -45,8 +45,8 @@ const { puedeCrear, puedeEditar } = usePermiso('/ayudantias')
 const tipoAyudantia = computed(() => tiposReserva.value?.find((t) => t.nombre === 'Ayudantía') ?? null)
 
 /* ── Alcance para modificar una reserva ─────────────────────
-   Mismo criterio que server/utils/alcanceReservas.ts (no se tocó ese archivo — alcance
-   "acotado" confirmado con el usuario): Administrador siempre puede; cualquiera puede
+   Mismo criterio que server/utils/alcanceReservas.ts: Administrador y Jefe de Carrera siempre
+   pueden (sin importar a nombre de quién esté la reserva); cualquier otra persona puede
    modificar sus propias reservas no-clase (toda Ayudantía creada acá tiene
    sesionParaleloId=null, así que nunca es "de clase"); Apoyo Docente además puede modificar
    cualquier reserva de una sala de la que sea encargado. */
@@ -54,7 +54,7 @@ const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? [
 
 function puedeModificarReserva(reserva: Reserva) {
    if (!puedeEditar.value || !user.value) return false
-   if (user.value.rol === 'Administrador') return true
+   if (user.value.rol === 'Administrador' || user.value.rol === 'Jefe de Carrera') return true
    if (reserva.personaId === user.value.personaId) return true
    if (user.value.rol === 'Apoyo Docente' && misSalasEncargadoSet.value.has(reserva.salaCodigo)) return true
    return false

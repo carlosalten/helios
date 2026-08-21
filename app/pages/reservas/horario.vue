@@ -33,22 +33,17 @@ const { puedeCrear, puedeEditar } = usePermiso('/reservas/horario')
 // reglas que server/utils/alcanceReservas.ts, para que la UI no ofrezca acciones que el
 // backend igual va a rechazar:
 //  - Administrador: todas.
-//  - Cualquier persona: las propias, salvo que sean de una clase (sesionParaleloId no nulo).
-//  - Jefe de Carrera: además, las reservas de clases (propias o no) de las carreras que dirige.
+//  - Jefe de Carrera: todas también, sin importar a nombre de quién estén ni si son de clase.
+//  - Cualquier otra persona: las propias, salvo que sean de una clase (sesionParaleloId no nulo).
 //  - Apoyo Docente: además, cualquier reserva en una sala de la que sea encargado.
 const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? []))
 
 function puedeModificarReserva(reserva: Reserva) {
    if (!puedeEditar.value || !user.value) return false
-   if (user.value.rol === 'Administrador') return true
+   if (user.value.rol === 'Administrador' || user.value.rol === 'Jefe de Carrera') return true
 
    const esClase = reserva.sesionParaleloId != null
    if (!esClase && reserva.personaId === user.value.personaId) return true
-
-   if (user.value.rol === 'Jefe de Carrera' && esClase && reserva.sesionParalelo) {
-      const carreraCodigo = reserva.sesionParalelo.paralelo.asignaturaPlan.plan.carreraCodigo
-      if (user.value.carrerasJefe?.includes(carreraCodigo)) return true
-   }
 
    if (user.value.rol === 'Apoyo Docente' && misSalasEncargadoSet.value.has(reserva.salaCodigo)) return true
 
