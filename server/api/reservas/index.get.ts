@@ -46,6 +46,20 @@ export default defineEventHandler(async (event) => {
                },
             },
          },
+         // Si la reserva es una Ayudantía creada desde /ayudantias, se arrastra la carrera del
+         // paralelo para mostrarla en el cuadro (el nombre de la asignatura ya viene en
+         // Reserva.subtitulo, no hace falta repetirlo acá).
+         paralelo: {
+            select: {
+               asignaturaPlan: {
+                  select: {
+                     plan: {
+                        select: { carreraCodigo: true, carrera: { select: { nombre: true, nombreCorto: true } } },
+                     },
+                  },
+               },
+            },
+         },
       },
       orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
    })

@@ -39,6 +39,12 @@ const { puedeCrear, puedeEditar } = usePermiso('/reservas/horario')
 const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? []))
 
 function puedeModificarReserva(reserva: Reserva) {
+   // Una tarjeta que fusiona 2+ bloques de una misma clase (ver `esClaseFusionada` más abajo)
+   // lleva el id de solo el primer bloque: editarla/moverla/cancelarla/borrarla desde acá
+   // tocaría solo esa porción y dejaría el resto de la clase atrás, sin que se note en
+   // pantalla. Para mover una clase completa se sigue usando /horario. "Copiar" (que no muta
+   // el original) no pasa por esta función, así que sigue disponible.
+   if (esClaseFusionada(reserva)) return false
    if (!puedeEditar.value || !user.value) return false
    if (user.value.rol === 'Administrador' || user.value.rol === 'Jefe de Carrera') return true
 
@@ -48,6 +54,13 @@ function puedeModificarReserva(reserva: Reserva) {
    if (user.value.rol === 'Apoyo Docente' && misSalasEncargadoSet.value.has(reserva.salaCodigo)) return true
 
    return false
+}
+
+// Editar (a diferencia de cancelar/borrar/mover) queda excluido para Ayudantía: ese tipo tiene
+// su propio formulario dedicado en /ayudantias (carrera → asignatura → paralelo → ayudante),
+// más completo que el genérico de acá — se gestiona desde ahí, no desde este modal.
+function puedeEditarReserva(reserva: Reserva) {
+   return puedeModificarReserva(reserva) && reserva.tipoReserva.nombre !== 'Ayudantía'
 }
 
 /* ── Semestre: solo define la plantilla horaria (rango de horas y separadores de
@@ -288,6 +301,87 @@ interface ReservaPosicionada {
 }
 type Celda = { tipo: 'vacia' } | { tipo: 'oculta' } | { tipo: 'cluster'; span: number; reservas: ReservaPosicionada[] }
 
+// Número de bloque de cada hora de inicio, para detectar bloques contiguos de una misma clase
+// (ver `fusionarClasesContiguas`) — mismo criterio que server/api/pantallas/publico/[codigo]
+// (fusionarBloquesContiguos): la contigüidad es por NÚMERO de bloque, no por hora, así que un
+// recreo entre dos bloques consecutivos no corta la fusión.
+const bloqueNumeroPorHoraInicio = computed(
+   () => new Map(bloquesSemestre.value.map((b) => [horaDeISO(b.inicio), b.numero]))
+)
+function bloqueNumeroDe(horaISO: string) {
+   return bloqueNumeroPorHoraInicio.value.get(horaDeISO(horaISO)) ?? null
+}
+
+// Una clase de varias horas (ej. 3 bloques de teoría seguidos) llega como una Reserva por
+// bloque — ver server/utils/reservasSesion.ts. Acá se fusionan los bloques contiguos de un
+// mismo paralelo en una sola tarjeta que abarca desde el inicio del primero hasta el fin del
+// último, para no mostrar una clase de 3 horas como 3 cuadros separados. Solo aplica a
+// reservas de clase (`sesionParalelo`): Ayudantías y demás tipos de reserva pasan tal cual.
+// Además de fusionar, registra en `idsFusionados` el id de toda tarjeta resultante de 2+
+// bloques — `esClaseFusionada` usa ese registro para bloquear editar/mover/cancelar/borrar
+// sobre esa tarjeta (ver el comentario en `puedeModificarReserva`).
+function fusionarClasesContiguas(reservasDia: Reserva[], idsFusionados: Set<number>): Reserva[] {
+   const porParalelo = new Map<number, Reserva[]>()
+   const resto: Reserva[] = []
+   for (const r of reservasDia) {
+      const paraleloId = r.sesionParalelo?.paralelo.id
+      if (paraleloId == null) {
+         resto.push(r)
+         continue
+      }
+      const grupo = porParalelo.get(paraleloId) ?? []
+      grupo.push(r)
+      porParalelo.set(paraleloId, grupo)
+   }
+
+   function cerrarGrupo(actual: Reserva, cantidad: number) {
+      if (cantidad > 1) idsFusionados.add(actual.id)
+      return actual
+   }
+
+   const fusionadas = [...resto]
+   for (const grupo of porParalelo.values()) {
+      const ordenado = [...grupo].sort((a, b) => horaAMinutos(horaDeISO(a.inicio)) - horaAMinutos(horaDeISO(b.inicio)))
+      let actual: Reserva | null = null
+      let bloqueAnterior: number | null = null
+      let cantidad = 0
+      for (const r of ordenado) {
+         const bloqueActual = bloqueNumeroDe(r.inicio)
+         const esContiguo =
+            actual && bloqueAnterior != null && bloqueActual != null && bloqueActual === bloqueAnterior + 1
+         if (esContiguo && actual!.cancelada === r.cancelada) {
+            actual = { ...actual!, fin: r.fin }
+            cantidad++
+         } else {
+            if (actual) fusionadas.push(cerrarGrupo(actual, cantidad))
+            actual = r
+            cantidad = 1
+         }
+         bloqueAnterior = bloqueActual
+      }
+      if (actual) fusionadas.push(cerrarGrupo(actual, cantidad))
+   }
+   return fusionadas
+}
+
+// Fusiona las reservas de cada día de la semana visible en un solo paso — `gridPorDia` consume
+// `porDia`, y `esClaseFusionada` consulta `idsFusionados` para gatear la interactividad de las
+// tarjetas fusionadas (ver `puedeModificarReserva`).
+const fusionDia = computed(() => {
+   const porDia = new Map<number, Reserva[]>()
+   const idsFusionados = new Set<number>()
+   for (const dia of DIAS_SEMANA) {
+      const fecha = fechasSemana.value.get(dia.valor)
+      const fechaISO = fecha ? formatFechaISO(fecha) : ''
+      const reservasDia = (reservas.value ?? []).filter((r) => r.fecha.slice(0, 10) === fechaISO)
+      porDia.set(dia.valor, fusionarClasesContiguas(reservasDia, idsFusionados))
+   }
+   return { porDia, idsFusionados }
+})
+function esClaseFusionada(reserva: Reserva) {
+   return fusionDia.value.idsFusionados.has(reserva.id)
+}
+
 // Agrupa reservas de un día en clusters de solapamiento transitivo: A se solapa con B y B con
 // C aunque A y C no se toquen directamente, las tres van en el mismo cluster.
 function agruparEnClusters(reservasDia: Reserva[]) {
@@ -337,10 +431,8 @@ function asignarColumnas(cluster: Reserva[]) {
 const gridPorDia = computed(() => {
    const mapa = new Map<number, Celda[]>()
    for (const dia of DIAS_SEMANA) {
-      const fecha = fechasSemana.value.get(dia.valor)
-      const fechaISO = fecha ? formatFechaISO(fecha) : ''
       const celdas: Celda[] = franjas.value.map(() => ({ tipo: 'vacia' }))
-      const reservasDia = (reservas.value ?? []).filter((r) => r.fecha.slice(0, 10) === fechaISO)
+      const reservasDia = fusionDia.value.porDia.get(dia.valor) ?? []
       for (const cluster of agruparEnClusters(reservasDia)) {
          const clusterInicioMin = Math.min(...cluster.map((r) => horaAMinutos(horaDeISO(r.inicio))))
          const clusterFinMin = Math.max(...cluster.map((r) => horaAMinutos(horaDeISO(r.fin))))
@@ -460,6 +552,13 @@ const personaPropia = computed(() => (personas.value ?? []).find((p) => p.email 
 function publicaPorDefectoDe(tipoReservaId: number) {
    return tiposReserva.value?.find((t) => t.id === tipoReservaId)?.publicaPorDefecto ?? true
 }
+
+// Ayudantía tiene su propia sección dedicada (/ayudantias), con su propio flujo de creación
+// (carrera → asignatura → paralelo → ayudante, siempre recurrente) — no se ofrece como tipo al
+// crear una reserva genérica acá, para no duplicar ese flujo con uno más simple e inconsistente.
+const itemsTipoReservaCrear = computed(() =>
+   (tiposReserva.value ?? []).filter((t) => t.nombre !== 'Ayudantía').map((t) => ({ label: t.nombre, value: t.id }))
+)
 watch(
    () => formCrear.tipoReservaId,
    (tipoReservaId) => {
@@ -482,7 +581,7 @@ function abrirCrear(diaValor: number, franja: Franja) {
    formCrear.fecha = formatFechaISO(fecha)
    formCrear.inicio = franja.horaInicio
    formCrear.fin = minutosAHora(finSugerido)
-   formCrear.tipoReservaId = tiposReserva.value?.[0]?.id ?? 0
+   formCrear.tipoReservaId = itemsTipoReservaCrear.value[0]?.value ?? 0
    formCrear.personaId = personaPropia.value?.id ?? personas.value?.[0]?.id ?? 0
    formCrear.recurrente = false
    formCrear.repetirHasta = ''
@@ -622,6 +721,16 @@ const formEditar = reactive({
 })
 const errorEditar = ref<string | null>(null)
 const confirmAlcanceEditarMostrar = ref(false)
+
+// Igual que itemsTipoReservaCrear, pero si la reserva que se está editando ya es de tipo
+// Ayudantía (creada antes de existir /ayudantias, o desde el propio /ayudantias), se mantiene
+// en la lista para que el selector no quede sin label — mismo criterio que `opcionesCambiarRol`
+// en /personas/gestion.
+const itemsTipoReservaEditar = computed(() =>
+   (tiposReserva.value ?? [])
+      .filter((t) => t.nombre !== 'Ayudantía' || t.id === reservaEditar.value?.tipoReservaId)
+      .map((t) => ({ label: t.nombre, value: t.id }))
+)
 
 function abrirEditar(reserva: Reserva) {
    reservaEditar.value = reserva
@@ -844,8 +953,10 @@ const itemsMenuContextual = computed(() => {
       const reserva = c.reserva
       const puedeModificar = puedeModificarReserva(reserva)
       const gestion = []
-      if (puedeModificar) {
+      if (puedeEditarReserva(reserva)) {
          gestion.push({ label: 'Editar reserva', icon: 'i-lucide-pen', onSelect: () => abrirEditar(reserva) })
+      }
+      if (puedeModificar) {
          gestion.push({
             label: reserva.cancelada ? 'Reactivar reserva' : 'Cancelar reserva',
             icon: reserva.cancelada ? 'i-lucide-rotate-ccw' : 'i-lucide-ban',
@@ -1261,7 +1372,7 @@ watch(editandoAlgo, async (ocupado) => {
                      <thead>
                         <tr>
                            <th
-                              class="sticky left-0 z-20 w-16 border-b border-default border-e-2 border-e-usm-text-muted/30 bg-muted p-1 text-left text-xs font-semibold text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
+                              class="sticky left-0 z-2 w-16 border-b border-default border-e-2 border-e-usm-text-muted/30 bg-muted p-1 text-left text-xs font-semibold text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
                            >
                               Hora
                            </th>
@@ -1286,7 +1397,7 @@ watch(editandoAlgo, async (ocupado) => {
                         <template v-for="franja in franjas" :key="franja.indice">
                            <tr>
                               <th
-                                 class="sticky left-0 z-10 h-2.5 border-e-2 border-e-usm-text-muted/30 bg-muted p-0 text-right align-top text-[10px] font-normal text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
+                                 class="sticky left-0 z-1 h-2.5 border-e-2 border-e-usm-text-muted/30 bg-muted p-0 text-right align-top text-[10px] font-normal text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
                                  :class="
                                     esLimiteMediaHora(franja.horaFin)
                                        ? 'border-b border-b-usm-text-muted/25 dark:border-b-slate-500/40'
@@ -1443,7 +1554,7 @@ watch(editandoAlgo, async (ocupado) => {
                <UFormField label="Tipo de reserva" name="tipoReservaId">
                   <USelect
                      v-model="formCrear.tipoReservaId"
-                     :items="(tiposReserva ?? []).map((t) => ({ label: t.nombre, value: t.id }))"
+                     :items="itemsTipoReservaCrear"
                      value-key="value"
                      class="w-full"
                   />
@@ -1580,7 +1691,7 @@ watch(editandoAlgo, async (ocupado) => {
                >Cerrar</UButton
             >
             <UButton
-               v-if="reservaSeleccionada && puedeModificarReserva(reservaSeleccionada)"
+               v-if="reservaSeleccionada && puedeEditarReserva(reservaSeleccionada)"
                color="neutral"
                variant="subtle"
                icon="i-lucide-pen"
@@ -1714,7 +1825,7 @@ watch(editandoAlgo, async (ocupado) => {
                <UFormField label="Tipo de reserva" name="tipoReservaId">
                   <USelect
                      v-model="formEditar.tipoReservaId"
-                     :items="(tiposReserva ?? []).map((t) => ({ label: t.nombre, value: t.id }))"
+                     :items="itemsTipoReservaEditar"
                      value-key="value"
                      class="w-full"
                   />

@@ -284,6 +284,58 @@ interface ReservaPosicionada {
 }
 type Celda = { tipo: 'vacia' } | { tipo: 'oculta' } | { tipo: 'cluster'; span: number; reservas: ReservaPosicionada[] }
 
+// Número de bloque de cada hora de inicio, para detectar bloques contiguos de una misma clase
+// (ver `fusionarClasesContiguas`) — mismo criterio que server/api/pantallas/publico/[codigo]
+// (fusionarBloquesContiguos): la contigüidad es por NÚMERO de bloque, no por hora, así que un
+// recreo entre dos bloques consecutivos no corta la fusión.
+const bloqueNumeroPorHoraInicio = computed(
+   () => new Map(bloquesSemestre.value.map((b) => [horaDeISO(b.inicio), b.numero]))
+)
+function bloqueNumeroDe(horaISO: string) {
+   return bloqueNumeroPorHoraInicio.value.get(horaDeISO(horaISO)) ?? null
+}
+
+// Una clase de varias horas (ej. 3 bloques de teoría seguidos) llega como una Reserva por
+// bloque — ver server/utils/reservasSesion.ts. Acá se fusionan los bloques contiguos de un
+// mismo paralelo en una sola tarjeta que abarca desde el inicio del primero hasta el fin del
+// último, para no mostrar una clase de 3 horas como 3 cuadros separados. Solo aplica a
+// reservas de clase (`sesionParalelo`): Ayudantías y demás tipos de reserva pasan tal cual.
+function fusionarClasesContiguas(reservasDia: Reserva[]): Reserva[] {
+   const porParalelo = new Map<number, Reserva[]>()
+   const resto: Reserva[] = []
+   for (const r of reservasDia) {
+      const paraleloId = r.sesionParalelo?.paralelo.id
+      if (paraleloId == null) {
+         resto.push(r)
+         continue
+      }
+      const grupo = porParalelo.get(paraleloId) ?? []
+      grupo.push(r)
+      porParalelo.set(paraleloId, grupo)
+   }
+
+   const fusionadas = [...resto]
+   for (const grupo of porParalelo.values()) {
+      const ordenado = [...grupo].sort((a, b) => horaAMinutos(horaDeISO(a.inicio)) - horaAMinutos(horaDeISO(b.inicio)))
+      let actual: Reserva | null = null
+      let bloqueAnterior: number | null = null
+      for (const r of ordenado) {
+         const bloqueActual = bloqueNumeroDe(r.inicio)
+         const esContiguo =
+            actual && bloqueAnterior != null && bloqueActual != null && bloqueActual === bloqueAnterior + 1
+         if (esContiguo && actual!.cancelada === r.cancelada) {
+            actual = { ...actual!, fin: r.fin }
+         } else {
+            if (actual) fusionadas.push(actual)
+            actual = r
+         }
+         bloqueAnterior = bloqueActual
+      }
+      if (actual) fusionadas.push(actual)
+   }
+   return fusionadas
+}
+
 function agruparEnClusters(reservasDia: Reserva[]) {
    const ordenadas = [...reservasDia].sort(
       (a, b) => horaAMinutos(horaDeISO(a.inicio)) - horaAMinutos(horaDeISO(b.inicio))
@@ -332,7 +384,9 @@ const gridPorDia = computed(() => {
       const fecha = fechasSemana.value.get(dia.valor)
       const fechaISO = fecha ? formatFechaISO(fecha) : ''
       const celdas: Celda[] = franjas.value.map(() => ({ tipo: 'vacia' }))
-      const reservasDia = (reservas.value ?? []).filter((r) => r.fecha.slice(0, 10) === fechaISO)
+      const reservasDia = fusionarClasesContiguas(
+         (reservas.value ?? []).filter((r) => r.fecha.slice(0, 10) === fechaISO)
+      )
       for (const cluster of agruparEnClusters(reservasDia)) {
          const clusterInicioMin = Math.min(...cluster.map((r) => horaAMinutos(horaDeISO(r.inicio))))
          const clusterFinMin = Math.max(...cluster.map((r) => horaAMinutos(horaDeISO(r.fin))))
@@ -399,6 +453,22 @@ function estiloBadgeTipo(reserva: Reserva) {
 }
 function textoBadgeTipo(reserva: Reserva) {
    return reserva.cancelada ? 'Cancelada' : reserva.tipoReserva.nombre
+}
+
+// Nombre de la asignatura cuando la reserva es una clase — mismo criterio que
+// `nombreAsignaturaDe` en reservas/horario.vue (nombre corto si tiene uno definido, si no el
+// completo). Para una Ayudantía, el nombre de la asignatura ya viene en `subtitulo`.
+function nombreAsignaturaDe(reserva: Reserva) {
+   const asignatura = reserva.sesionParalelo?.paralelo.asignaturaPlan.asignatura
+   return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
+}
+// Carrera de la reserva: de la clase si es una sesión de paralelo, del paralelo si es una
+// Ayudantía creada desde acá (ver Reserva.paralelo) — cualquier otro tipo de reserva no tiene
+// carrera asociada.
+function carreraDe(reserva: Reserva) {
+   const carrera =
+      reserva.sesionParalelo?.paralelo.asignaturaPlan.plan.carrera ?? reserva.paralelo?.asignaturaPlan.plan.carrera
+   return carrera?.nombreCorto ?? null
 }
 
 function enmascararHora(valor: string) {
@@ -801,7 +871,7 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                   <thead>
                      <tr>
                         <th
-                           class="sticky left-0 z-20 w-16 border-b border-default border-e-2 border-e-usm-text-muted/30 bg-muted p-1 text-left text-xs font-semibold text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
+                           class="sticky left-0 z-2 w-16 border-b border-default border-e-2 border-e-usm-text-muted/30 bg-muted p-1 text-left text-xs font-semibold text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
                         >
                            Hora
                         </th>
@@ -826,7 +896,7 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                      <template v-for="franja in franjas" :key="franja.indice">
                         <tr>
                            <th
-                              class="sticky left-0 z-10 h-2.5 border-e-2 border-e-usm-text-muted/30 bg-muted p-0 text-right align-top text-[10px] font-normal text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
+                              class="sticky left-0 z-1 h-2.5 border-e-2 border-e-usm-text-muted/30 bg-muted p-0 text-right align-top text-[10px] font-normal text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
                               :class="
                                  esLimiteMediaHora(franja.horaFin)
                                     ? 'border-b border-b-usm-text-muted/25 dark:border-b-slate-500/40'
@@ -887,8 +957,20 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                                           />
                                           <span class="truncate">{{ rp.reserva.titulo }}</span>
                                        </span>
-                                       <div v-if="rp.reserva.subtitulo" class="truncate">
-                                          {{ rp.reserva.subtitulo }}
+                                       <template v-if="rp.reserva.sesionParalelo">
+                                          <div class="truncate">{{ nombreAsignaturaDe(rp.reserva) }}</div>
+                                          <div class="truncate">{{ carreraDe(rp.reserva) }}</div>
+                                       </template>
+                                       <template v-else>
+                                          <div v-if="rp.reserva.subtitulo" class="truncate">
+                                             {{ rp.reserva.subtitulo }}
+                                          </div>
+                                          <div v-if="carreraDe(rp.reserva)" class="truncate">
+                                             {{ carreraDe(rp.reserva) }}
+                                          </div>
+                                       </template>
+                                       <div v-if="rp.reserva.persona" class="truncate">
+                                          {{ rp.reserva.persona.nombre }} {{ rp.reserva.persona.apellido }}
                                        </div>
                                     </div>
                                  </div>

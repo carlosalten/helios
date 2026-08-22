@@ -223,8 +223,10 @@ export default defineEventHandler(async (event) => {
       else if (clase.inicio > ahoraHHMM) proximas.push(clase)
    }
 
+   // `numeric: true` compara el número de sala como número, no letra por letra (si no,
+   // "G10" quedaría antes que "G9" por orden lexicográfico).
    const porInicioYSala = (a: ClaseResumen, b: ClaseResumen) =>
-      a.inicio.localeCompare(b.inicio) || a.salaCodigo.localeCompare(b.salaCodigo)
+      a.inicio.localeCompare(b.inicio) || a.salaCodigo.localeCompare(b.salaCodigo, undefined, { numeric: true })
    enCurso.sort(porInicioYSala)
    proximas.sort(porInicioYSala)
 

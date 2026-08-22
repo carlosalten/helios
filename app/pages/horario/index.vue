@@ -903,26 +903,30 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
          />
 
          <div v-else class="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
-            <!-- Matriz: en escritorio estira a la misma altura que el panel lateral (columna
-                 más alta de la fila de grilla — `align-items: stretch`, el valor por defecto,
-                 ya no se lo pisa con `items-start`) y scrollea internamente si su contenido no
-                 alcanza. `lg:min-h-0` es necesario porque, si no, el `min-height: auto` implícito
-                 de todo ítem de grilla lo obliga a crecer con su contenido en vez de acotarse. -->
-            <div
-               class="max-h-[70vh] overflow-auto rounded-2xl border border-default bg-default lg:h-full lg:max-h-none lg:min-h-0"
-            >
+            <!-- Matriz: mismo tope de alto (120vh) en mobile y escritorio, con scroll propio si el
+                 contenido no alcanza. Antes, en escritorio (`lg:h-full`) se intentaba estirar a la
+                 altura del panel lateral vía CSS Grid, pero ningún ancestro define un alto real
+                 (`min-h-screen` es un piso, no un techo), así que ese `lg:h-full` terminaba
+                 resolviendo a `auto`: la matriz crecía con todo su contenido y el scroll ocurría
+                 en la página completa, no en esta caja. UScrollArea reemplaza al div con
+                 `overflow-auto` que había acá: mismas clases de acotamiento de alto, pero con la
+                 barra de scroll con estilo propio de Nuxt UI en vez de la nativa del navegador.
+                 `overflow-x-auto` de más (la orientación por defecto de UScrollArea solo trae
+                 `overflow-y-auto overflow-x-hidden`) para que siga scrolleando horizontalmente en
+                 pantallas angostas cuando no caben todos los días. -->
+            <UScrollArea class="max-h-[120vh] overflow-x-auto rounded-2xl border border-default bg-default">
                <table class="w-full border-collapse text-sm">
                   <thead>
                      <tr>
                         <th
-                           class="sticky top-0 left-0 z-30 w-32 border-b border-e border-default bg-muted p-2 text-left text-xs font-semibold text-usm-text-muted dark:text-slate-400"
+                           class="sticky top-0 left-0 z-3 w-32 border-b border-e border-default bg-muted p-2 text-left text-xs font-semibold text-usm-text-muted dark:text-slate-400"
                         >
                            Bloque
                         </th>
                         <th
                            v-for="dia in diasVisibles"
                            :key="dia.valor"
-                           class="sticky top-0 z-20 border-b border-e border-default p-2 text-center text-xs font-semibold last:border-e-0"
+                           class="sticky top-0 z-2 border-b border-e border-default p-2 text-center text-xs font-semibold last:border-e-0"
                            :class="
                               DIAS_FIN_SEMANA.includes(dia.valor)
                                  ? 'bg-gray-100 text-usm-text-muted dark:bg-slate-800 dark:text-slate-400'
@@ -956,7 +960,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                         <tr>
                            <!-- Etiqueta del bloque -->
                            <th
-                              class="sticky left-0 z-10 border-b border-e border-default bg-muted p-2 text-left align-top"
+                              class="sticky left-0 z-1 border-b border-e border-default bg-muted p-2 text-left align-top"
                            >
                               <div class="font-semibold text-usm-text dark:text-white">N° {{ bloque.numero }}</div>
                               <div class="text-xs text-usm-text-muted dark:text-slate-400">
@@ -1210,7 +1214,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                      </template>
                   </tbody>
                </table>
-            </div>
+            </UScrollArea>
 
             <!-- Paneles laterales -->
             <div class="mt-6 lg:mt-0">
