@@ -85,6 +85,7 @@ export interface Reserva {
    // Presente solo si la reserva viene de una sesión de clases (ver sesionParaleloId).
    sesionParalelo: {
       paralelo: {
+         id: number
          codigo: string
          // Color del paralelo en la matriz de horario; nulo mientras no se le asigne uno.
          color: string | null
@@ -94,5 +95,10 @@ export interface Reserva {
             plan: { numero: number; carreraCodigo: number; carrera: { nombre: string; nombreCorto: string } }
          }
       }
+   } | null
+   // Presente solo si la reserva es una Ayudantía creada desde /ayudantias (ver paraleloId).
+   // Solo trae la carrera: el nombre de la asignatura ya está en `subtitulo`.
+   paralelo: {
+      asignaturaPlan: { plan: { carreraCodigo: number; carrera: { nombre: string; nombreCorto: string } } }
    } | null
 }

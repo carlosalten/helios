@@ -92,21 +92,22 @@ const gruposNav: NavItem[][] = [
    ],
    [
       {
+         to: '/ayudantias',
+         icon: 'i-lucide-user-check',
+         label: 'Ayudantías',
+         children: [
+            { to: '/ayudantias', label: 'Horario de ayudantías' },
+            { to: '/ayudantias/resumen', label: 'Resumen' },
+            { to: '/ayudantias/gestion', label: 'Gestión de ayudantes' },
+         ],
+      },
+      {
          to: '/cursos',
          icon: 'i-lucide-school',
          label: 'Cursos',
          children: [
             { to: '/cursos', label: 'Gestión de cursos' },
             { to: '/cursos/carga-masiva', label: 'Carga masiva de horario' },
-         ],
-      },
-      {
-         to: '/paralelos',
-         icon: 'i-lucide-users-round',
-         label: 'Paralelos',
-         children: [
-            { to: '/paralelos', label: 'Gestión de paralelos' },
-            { to: '/paralelos/asignacion', label: 'Asignación de paralelos' },
          ],
       },
       {
@@ -119,6 +120,15 @@ const gruposNav: NavItem[][] = [
          ],
       },
       {
+         to: '/paralelos',
+         icon: 'i-lucide-users-round',
+         label: 'Paralelos',
+         children: [
+            { to: '/paralelos', label: 'Gestión de paralelos' },
+            { to: '/paralelos/asignacion', label: 'Asignación de paralelos' },
+         ],
+      },
+      {
          to: '/reservas',
          icon: 'i-lucide-calendar',
          label: 'Reservas',
@@ -127,16 +137,6 @@ const gruposNav: NavItem[][] = [
             { to: '/reservas/imprimir', label: 'Imprimir horarios' },
             { to: '/reservas/resumen', label: 'Resumen de reservas' },
             { to: '/reservas/tipos', label: 'Tipos de reserva' },
-         ],
-      },
-      {
-         to: '/ayudantias',
-         icon: 'i-lucide-user-check',
-         label: 'Ayudantías',
-         children: [
-            { to: '/ayudantias', label: 'Horario de ayudantías' },
-            { to: '/ayudantias/resumen', label: 'Resumen' },
-            { to: '/ayudantias/gestion', label: 'Gestión de ayudantes' },
          ],
       },
    ],

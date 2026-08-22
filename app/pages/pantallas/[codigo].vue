@@ -200,7 +200,7 @@ function colorDe(clase: ClasePantalla) {
                         }}
                      </p>
                   </div>
-                  <div v-else class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                  <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                      <div
                         v-for="clase in clasesVista"
                         :key="clase.id"
@@ -216,12 +216,23 @@ function colorDe(clase: ClasePantalla) {
                            Cancelada
                         </div>
                         <div class="mb-2 flex items-start justify-between gap-3">
-                           <span
-                              class="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-lg font-bold"
-                           >
-                              <UIcon name="i-lucide-door-open" class="size-4" />
-                              {{ clase.salaCodigo }}
-                           </span>
+                           <div class="flex flex-wrap items-center gap-2">
+                              <span
+                                 class="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-lg font-bold"
+                              >
+                                 <UIcon name="i-lucide-door-open" class="size-4" />
+                                 {{ clase.salaCodigo }}
+                              </span>
+                              <span
+                                 class="inline-flex items-center rounded-full px-2.5 py-1 text-sm font-semibold"
+                                 :style="{
+                                    backgroundColor: `${clase.tipoReservaColor}33`,
+                                    color: clase.tipoReservaColor,
+                                 }"
+                              >
+                                 {{ clase.tipoReservaNombre }}
+                              </span>
+                           </div>
                            <span class="shrink-0 font-mono text-lg font-semibold tabular-nums text-white">
                               {{ clase.inicio }}–{{ clase.fin }}
                            </span>
@@ -232,17 +243,18 @@ function colorDe(clase: ClasePantalla) {
                         >
                            {{ (clase.esClase && clase.asignaturaNombre) || clase.subtitulo || clase.titulo }}
                         </p>
-                        <p v-if="clase.esClase && clase.asignaturaCodigo" class="truncate text-white">
-                           {{ clase.asignaturaCodigo }} · Paralelo {{ clase.paraleloCodigo }}
-                        </p>
+                        <div
+                           v-if="clase.esClase && clase.asignaturaCodigo"
+                           class="flex items-start justify-between gap-3 text-white"
+                        >
+                           <p class="truncate">{{ clase.asignaturaCodigo }} · Paralelo {{ clase.paraleloCodigo }}</p>
+                           <!-- Alineada a la derecha, debajo de la hora — mismo eje que el header de arriba. -->
+                           <p v-if="clase.carreraNombre" class="shrink-0 truncate">{{ clase.carreraNombre }}</p>
+                        </div>
                         <!-- Ayudantía sin sesión de paralelo real: el subtítulo (nombre de la asignatura) ocupó
                              el título grande de arriba, así que acá el título (código+paralelo) baja a detalle,
                              mismo lugar que ocupa "código · Paralelo N" en una clase real. -->
                         <p v-else-if="clase.subtitulo" class="truncate text-white">{{ clase.titulo }}</p>
-                        <p v-if="clase.esClase && clase.carreraNombre" class="truncate text-white">
-                           {{ clase.carreraNombre }}
-                        </p>
-                        <p v-if="!clase.esClase" class="truncate text-white">{{ clase.tipoReservaNombre }}</p>
                         <p class="mt-2 flex items-center gap-1.5 truncate text-white">
                            <UIcon name="i-lucide-user" class="size-4 shrink-0" />
                            <span :class="clase.responsable ? '' : 'italic'">
