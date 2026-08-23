@@ -61,7 +61,7 @@ interface EquipoFeria {
    grupoId: number
    grupoNombre: string
    grupoNumero: number
-   titulo: string
+   grupoSubtitulo: string | null
    integrantes: TtPropuestaRevision[]
 }
 const equiposFeria = computed<EquipoFeria[]>(() => {
@@ -76,7 +76,7 @@ const equiposFeria = computed<EquipoFeria[]>(() => {
             grupoId: grupo.id,
             grupoNombre: grupo.nombre,
             grupoNumero: grupo.numero,
-            titulo: p.titulo,
+            grupoSubtitulo: grupo.subtitulo,
             integrantes: [p],
          })
    }
@@ -322,10 +322,13 @@ async function confirmarDeshacer() {
                   <div class="mb-3 flex items-start justify-between gap-3">
                      <div class="min-w-0">
                         <p class="font-semibold whitespace-normal wrap-break-word text-usm-text dark:text-white">
-                           {{ equipo.grupoNombre }} — {{ equipo.titulo }}
+                           Grupo {{ equipo.grupoNumero }} — {{ equipo.grupoNombre }}
+                        </p>
+                        <p v-if="equipo.grupoSubtitulo" class="text-xs text-usm-text-muted dark:text-slate-400">
+                           {{ equipo.grupoSubtitulo }}
                         </p>
                         <p class="text-xs text-usm-text-muted dark:text-slate-400">
-                           Grupo {{ equipo.grupoNumero }} · {{ equipo.integrantes.length }} integrantes
+                           {{ equipo.integrantes.length }} integrantes
                         </p>
                      </div>
                      <UBadge :color="guiaEquipo(equipo) ? 'success' : 'warning'" variant="subtle" class="shrink-0">
