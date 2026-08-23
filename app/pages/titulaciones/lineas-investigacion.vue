@@ -16,17 +16,19 @@ const { paginaActual, itemsPagina: lineasPagina, porPagina } = usePaginacion(com
 
 const columnas: TableColumn<TtLineaInvestigacion>[] = [
    { accessorKey: 'nombre', header: 'Nombre' },
+   { id: 'activo', header: 'Activo', size: 100 },
    { id: 'acciones', header: '', size: 80 },
 ]
 
 /* ── Crear ───────────────────────────────────────────────── */
 const modalCrearMostrar = ref(false)
-const formCrear = reactive({ nombre: '' })
+const formCrear = reactive({ nombre: '', activo: true })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 
 function abrirCrear() {
    formCrear.nombre = ''
+   formCrear.activo = true
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -37,7 +39,7 @@ async function guardar() {
    try {
       await $fetch('/api/titulaciones/lineas-investigacion', {
          method: 'POST',
-         body: { nombre: formCrear.nombre },
+         body: { nombre: formCrear.nombre, activo: formCrear.activo },
       })
       modalCrearMostrar.value = false
       await refresh()
@@ -52,12 +54,13 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const lineaEditar = ref<TtLineaInvestigacion | null>(null)
-const formEditar = reactive({ nombre: '' })
+const formEditar = reactive({ nombre: '', activo: true })
 const errorEditar = ref<string | null>(null)
 
 function abrirEditar(linea: TtLineaInvestigacion) {
    lineaEditar.value = linea
    formEditar.nombre = linea.nombre
+   formEditar.activo = linea.activo
    errorEditar.value = null
    modalEditarMostrar.value = true
 }
@@ -68,7 +71,7 @@ async function guardarEditar() {
    errorEditar.value = null
    try {
       const url: string = `/api/titulaciones/lineas-investigacion/${lineaEditar.value.id}`
-      await $fetch(url, { method: 'PATCH', body: { nombre: formEditar.nombre } })
+      await $fetch(url, { method: 'PATCH', body: { nombre: formEditar.nombre, activo: formEditar.activo } })
       modalEditarMostrar.value = false
       await refresh()
       toast.add({ title: 'Línea de investigación actualizada', color: 'success', icon: 'i-lucide-check-circle' })
@@ -131,6 +134,10 @@ async function confirmarEliminar() {
             @action="abrirCrear"
          />
          <UTable v-else :data="lineasPagina" :columns="columnas">
+            <template #activo-cell="{ row }">
+               <UBadge v-if="row.original.activo" color="success" variant="subtle" size="sm">Sí</UBadge>
+               <UBadge v-else color="neutral" variant="subtle" size="sm">No</UBadge>
+            </template>
             <template #acciones-cell="{ row }">
                <div class="flex justify-end gap-1">
                   <UTooltip text="Editar">
@@ -175,6 +182,7 @@ async function confirmarEliminar() {
                      class="w-full"
                   />
                </UFormField>
+               <USwitch v-model="formCrear.activo" label="Activo" />
             </UForm>
          </template>
          <template #footer>
@@ -199,6 +207,7 @@ async function confirmarEliminar() {
                <UFormField label="Nombre" name="nombre" :error="errorEditar ?? undefined">
                   <UInput v-model="formEditar.nombre" class="w-full" />
                </UFormField>
+               <USwitch v-model="formEditar.activo" label="Activo" />
             </UForm>
          </template>
          <template #footer>

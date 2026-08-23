@@ -42,12 +42,18 @@ export const crearTtGrupoSchema = z.object({
    procesoId: z.number({ error: 'El proceso es requerido' }).int(),
 })
 
+// POST /api/titulaciones/grupos/[id]/integrantes — agrega un estudiante ya existente al grupo.
+export const agregarIntegranteGrupoSchema = z.object({
+   email: emailSchema,
+})
+
 // ============================================================
 // Líneas de investigación
 // ============================================================
 
 export const crearTtLineaInvestigacionSchema = z.object({
    nombre: nombreSchema('El nombre es requerido', 50),
+   activo: z.boolean().default(true),
 })
 
 // ============================================================
@@ -100,6 +106,11 @@ export const editarTtEstudianteSchema = z.object({
 // Profesores
 // ============================================================
 
+const cupoMaximoSchema = z
+   .number({ error: 'El cupo máximo es requerido' })
+   .int('Debe ser un número entero')
+   .min(1, 'Debe ser mayor o igual a 1')
+
 export const crearTtProfesorSchema = z.object({
    email: emailSchema,
    run: runSchema,
@@ -107,6 +118,7 @@ export const crearTtProfesorSchema = z.object({
    apellido: nombreSchema('El apellido es requerido', 30),
    esGuia: z.boolean().default(false),
    esInvestigador: z.boolean().default(false),
+   cupoMaximo: cupoMaximoSchema,
 })
 
 // Igual que crearTtProfesorSchema, sin email: es la clave primaria, no se edita una vez creado
@@ -117,6 +129,7 @@ export const editarTtProfesorSchema = z.object({
    apellido: nombreSchema('El apellido es requerido', 30),
    esGuia: z.boolean().default(false),
    esInvestigador: z.boolean().default(false),
+   cupoMaximo: cupoMaximoSchema,
 })
 
 // ============================================================
@@ -178,19 +191,47 @@ export const crearTtPropuestaSchema = z
    })
    .superRefine((data, ctx) => {
       if (data.modalidad === 'Investigación') {
-         if (!data.invMotivacion) ctx.addIssue({ code: 'custom', path: ['invMotivacion'], message: 'La motivación es requerida' })
-         if (!data.invExperiencia) ctx.addIssue({ code: 'custom', path: ['invExperiencia'], message: 'La experiencia es requerida' })
+         if (!data.invMotivacion)
+            ctx.addIssue({ code: 'custom', path: ['invMotivacion'], message: 'La motivación es requerida' })
+         if (!data.invExperiencia)
+            ctx.addIssue({ code: 'custom', path: ['invExperiencia'], message: 'La experiencia es requerida' })
          if (!data.lineaInvestigacionId)
-            ctx.addIssue({ code: 'custom', path: ['lineaInvestigacionId'], message: 'La línea de investigación es requerida' })
+            ctx.addIssue({
+               code: 'custom',
+               path: ['lineaInvestigacionId'],
+               message: 'La línea de investigación es requerida',
+            })
       }
       if (data.modalidad === 'Proyecto Propio') {
-         if (!data.claProblema) ctx.addIssue({ code: 'custom', path: ['claProblema'], message: 'El problema es requerido' })
-         if (!data.claObjetivo) ctx.addIssue({ code: 'custom', path: ['claObjetivo'], message: 'El objetivo es requerido' })
+         if (!data.claProblema)
+            ctx.addIssue({ code: 'custom', path: ['claProblema'], message: 'El problema es requerido' })
+         if (!data.claObjetivo)
+            ctx.addIssue({ code: 'custom', path: ['claObjetivo'], message: 'El objetivo es requerido' })
       }
       if (data.modalidad === 'Tesina Feria de Software') {
          if (!data.rolId) ctx.addIssue({ code: 'custom', path: ['rolId'], message: 'El rol es requerido' })
       }
    })
+
+// ============================================================
+// Comisión — asignación de profesor guía
+// ============================================================
+
+// Valor de `TtComision.rol` para la fila que representa al profesor guía de una propuesta (a
+// diferencia de otros roles de comisión — presidente, revisor — texto libre, no un enum de
+// Postgres, igual que `modalidad`/`estado`). Ver el índice único parcial
+// `tt_comision_propuesta_id_guia_key` (a lo más un profesor con este rol por propuesta) y
+// POST /api/titulaciones/asignacion-guia/asignar.
+export const ROL_COMISION_GUIA = 'Guía'
+
+// Body de POST /api/titulaciones/asignacion-guia/asignar: `propuestaIds` es más de uno cuando se
+// asigna a todo un equipo de Feria de Software (una fila de comisión por integrante que postuló),
+// y exactamente uno para Investigación/Proyecto propio. `profesorEmail` nulo = quitar el guía
+// asignado (deja al equipo/propuesta "Sin asignar").
+export const asignarGuiaSchema = z.object({
+   propuestaIds: z.array(z.number().int()).min(1, 'Debe incluir al menos una propuesta'),
+   profesorEmail: emailSchema.nullable(),
+})
 
 // ============================================================
 // Carga masiva de estudiantes

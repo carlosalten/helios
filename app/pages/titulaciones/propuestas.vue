@@ -1,19 +1,30 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { CatalogosPropuesta, TtPropuestaRevision } from '~/types/titulaciones'
+import type { CatalogosPropuesta, TtProceso, TtPropuestaRevision } from '~/types/titulaciones'
 import { MODALIDADES_PROPUESTA } from '~/types/titulaciones'
 
 const toast = useToast()
 
 const { puedeBorrar, puedeEditar } = usePermiso('/titulaciones/propuestas')
 
-const [
-   { data: propuestas, status, refresh },
-   { data: catalogos },
-] = await Promise.all([
+const [{ data: propuestas, status, refresh }, { data: catalogos }, { data: procesos }] = await Promise.all([
    useFetch<TtPropuestaRevision[]>('/api/titulaciones/propuestas'),
    useFetch<CatalogosPropuesta>('/api/titulaciones/propuestas/catalogos'),
+   useFetch<TtProceso[]>('/api/titulaciones/procesos'),
 ])
+
+/* ── Filtro por proceso (mismo patrón que /titulaciones/grupos) ─────────── */
+const procesosOrdenadosDesc = computed(() => [...(procesos.value ?? [])].sort((a, b) => b.anio - a.anio))
+const itemsProcesoFiltro = computed(() =>
+   procesosOrdenadosDesc.value.map((p) => ({ label: String(p.anio), value: p.id }))
+)
+// Por defecto, el proceso del año más grande (el primero tras ordenar descendente).
+const procesoFiltroId = ref<number | undefined>(procesosOrdenadosDesc.value[0]?.id)
+const propuestasDelProceso = computed(() =>
+   (propuestas.value ?? []).filter(
+      (p) => procesoFiltroId.value == null || p.estudiante.procesoId === procesoFiltroId.value
+   )
+)
 
 function ultimoEstado(propuesta: TtPropuestaRevision) {
    return propuesta.estados[0]?.estado ?? null
@@ -75,11 +86,11 @@ function contarPorEstado(items: TtPropuestaRevision[]) {
    }
 }
 
-const metricasTotal = computed(() => contarPorEstado(propuestas.value ?? []))
+const metricasTotal = computed(() => contarPorEstado(propuestasDelProceso.value))
 
 const metricasPorModalidad = computed(() =>
    MODALIDADES_PROPUESTA.map((modalidad) => {
-      const items = (propuestas.value ?? []).filter((p) => p.modalidad === modalidad)
+      const items = propuestasDelProceso.value.filter((p) => p.modalidad === modalidad)
       const conteo = contarPorEstado(items)
       const porcentaje = metricasTotal.value.total ? Math.round((items.length / metricasTotal.value.total) * 100) : 0
       return { modalidad, ...conteo, porcentaje }
@@ -104,7 +115,7 @@ const itemsModalidadFiltro = [
 ]
 
 const propuestasFiltradas = computed(() => {
-   let lista = propuestas.value ?? []
+   let lista = propuestasDelProceso.value
    if (estadoFiltro.value !== '__todos__') lista = lista.filter((p) => ultimoEstado(p) === estadoFiltro.value)
    if (modalidadFiltro.value !== '__todos__') lista = lista.filter((p) => p.modalidad === modalidadFiltro.value)
    if (busqueda.value.trim()) {
@@ -131,7 +142,11 @@ const { paginaActual, itemsPagina: propuestasPagina, porPagina } = usePaginacion
 const columnas: TableColumn<TtPropuestaRevision>[] = [
    { id: 'aviso', header: '', size: 40 },
    { id: 'estudiante', header: 'Estudiante' },
-   { accessorKey: 'modalidad', header: 'Modalidad' },
+   {
+      accessorKey: 'modalidad',
+      header: 'Modalidad',
+      meta: { class: { th: 'hidden lg:table-cell', td: 'hidden lg:table-cell' } },
+   },
    { accessorKey: 'titulo', header: 'Título propuesto' },
    { id: 'estado', header: 'Estado', size: 110 },
 ]
@@ -232,8 +247,7 @@ const modalEditarMostrar = ref(false)
 async function onGuardadoEdicion() {
    await refresh()
    if (propuestaSeleccionada.value) {
-      propuestaSeleccionada.value =
-         propuestas.value?.find((p) => p.id === propuestaSeleccionada.value?.id) ?? null
+      propuestaSeleccionada.value = propuestas.value?.find((p) => p.id === propuestaSeleccionada.value?.id) ?? null
    }
    toast.add({ title: 'Propuesta actualizada', color: 'success', icon: 'i-lucide-check-circle' })
 }
@@ -271,7 +285,9 @@ async function eliminarPropuesta() {
             Listado completo de temas postulados por los estudiantes, con su estado en el proceso de revisión.
          </p>
          <div class="flex shrink-0 items-center gap-2">
-            <p class="text-xs text-usm-text-muted dark:text-slate-400">Última actualización: {{ ultimaActualizacion }}</p>
+            <p class="text-xs text-usm-text-muted dark:text-slate-400">
+               Última actualización: {{ ultimaActualizacion }}
+            </p>
             <UTooltip text="Actualizar">
                <UButton
                   icon="i-lucide-refresh-cw"
@@ -284,6 +300,10 @@ async function eliminarPropuesta() {
             </UTooltip>
          </div>
       </div>
+
+      <UFormField label="Proceso" class="max-w-xs">
+         <USelectMenu v-model="procesoFiltroId" :items="itemsProcesoFiltro" value-key="value" class="w-full" />
+      </UFormField>
 
       <TableSkeleton v-if="status === 'pending'" :rows="4" />
 
@@ -395,6 +415,9 @@ async function eliminarPropuesta() {
                         <p class="truncate text-xs text-usm-text-muted dark:text-slate-400">
                            {{ row.original.estudiante.run }}
                         </p>
+                        <p class="truncate text-xs text-usm-text-muted lg:hidden dark:text-slate-400">
+                           {{ row.original.modalidad }}
+                        </p>
                      </div>
                   </template>
                   <template #titulo-cell="{ row }">
@@ -430,7 +453,10 @@ async function eliminarPropuesta() {
             v-model:open="slideoverAbierto"
             :title="propuestaSeleccionada?.titulo"
             :description="propuestaSeleccionada?.modalidad"
-            :ui="{ description: 'text-usm-blue dark:text-usm-cyan', content: 'w-[40vw] max-w-[40vw]' }"
+            :ui="{
+               description: 'text-usm-blue dark:text-usm-cyan',
+               content: 'w-[90vw] max-w-[90vw] lg:w-[40vw] lg:max-w-[40vw]',
+            }"
          >
             <template #body>
                <div v-if="propuestaSeleccionada" class="space-y-4">
@@ -572,7 +598,11 @@ async function eliminarPropuesta() {
                   </div>
                   <!-- Espaciador simétrico al grupo de la izquierda (editar/eliminar), para que el
                        grupo central quede centrado sin importar qué permisos tenga el usuario. -->
-                  <div v-if="puedeEditar || puedeBorrar" class="invisible flex shrink-0 items-center gap-2" aria-hidden="true">
+                  <div
+                     v-if="puedeEditar || puedeBorrar"
+                     class="invisible flex shrink-0 items-center gap-2"
+                     aria-hidden="true"
+                  >
                      <UButton v-if="puedeEditar" icon="i-lucide-pen" tabindex="-1" />
                      <UButton v-if="puedeBorrar" icon="i-lucide-trash-2" tabindex="-1" />
                   </div>
@@ -640,7 +670,11 @@ async function eliminarPropuesta() {
                   ¿Solicitar precisar la propuesta <span class="font-semibold">{{ propuestaSeleccionada?.titulo }}</span
                   >?
                </p>
-               <UFormField label="Qué antecedentes se necesitan" required :help="`${comentarioAntecedentes.length}/3000`">
+               <UFormField
+                  label="Qué antecedentes se necesitan"
+                  required
+                  :help="`${comentarioAntecedentes.length}/3000`"
+               >
                   <UTextarea
                      v-model="comentarioAntecedentes"
                      :rows="3"
