@@ -29,12 +29,21 @@ const columnas: TableColumn<TtProfesor>[] = [
    { accessorKey: 'email', header: 'Email' },
    { accessorKey: 'run', header: 'RUN', size: 110 },
    { id: 'tipo', header: 'Tipo', size: 160 },
+   { accessorKey: 'cupoMaximo', header: 'Cupo', size: 90 },
    { id: 'acciones', header: '', size: 80 },
 ]
 
 /* ── Crear ───────────────────────────────────────────────── */
 const modalCrearMostrar = ref(false)
-const formCrear = reactive({ email: '', run: '', nombre: '', apellido: '', esGuia: false, esInvestigador: false })
+const formCrear = reactive({
+   email: '',
+   run: '',
+   nombre: '',
+   apellido: '',
+   esGuia: false,
+   esInvestigador: false,
+   cupoMaximo: 6,
+})
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 const errorGuardarEmail = computed(() => (errorGuardar.value?.includes('email') ? errorGuardar.value : undefined))
@@ -50,6 +59,7 @@ function abrirCrear() {
    formCrear.apellido = ''
    formCrear.esGuia = false
    formCrear.esInvestigador = false
+   formCrear.cupoMaximo = 6
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -72,7 +82,14 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const profesorEditar = ref<TtProfesor | null>(null)
-const formEditar = reactive({ run: '', nombre: '', apellido: '', esGuia: false, esInvestigador: false })
+const formEditar = reactive({
+   run: '',
+   nombre: '',
+   apellido: '',
+   esGuia: false,
+   esInvestigador: false,
+   cupoMaximo: 6,
+})
 const errorEditar = ref<string | null>(null)
 const errorEditarRun = computed(() => (errorEditar.value?.includes('RUN') ? errorEditar.value : undefined))
 const errorEditarNombre = computed(() => (errorEditar.value && !errorEditarRun.value ? errorEditar.value : undefined))
@@ -84,6 +101,7 @@ function abrirEditar(profesor: TtProfesor) {
    formEditar.apellido = profesor.apellido
    formEditar.esGuia = profesor.esGuia
    formEditar.esInvestigador = profesor.esInvestigador
+   formEditar.cupoMaximo = profesor.cupoMaximo
    errorEditar.value = null
    modalEditarMostrar.value = true
 }
@@ -177,6 +195,11 @@ async function confirmarEliminar() {
                   </UBadge>
                </div>
             </template>
+            <template #cupoMaximo-cell="{ row }">
+               <span class="text-usm-text dark:text-white">{{
+                  row.original.esGuia ? row.original.cupoMaximo : '—'
+               }}</span>
+            </template>
             <template #acciones-cell="{ row }">
                <div class="flex justify-end gap-1">
                   <UTooltip text="Editar">
@@ -230,6 +253,14 @@ async function confirmarEliminar() {
                </div>
                <USwitch v-model="formCrear.esGuia" label="Es guía" />
                <USwitch v-model="formCrear.esInvestigador" label="Es investigador" />
+               <UFormField
+                  v-if="formCrear.esGuia"
+                  label="Cupo máximo"
+                  name="cupoMaximo"
+                  description="Propuestas que puede guiar a la vez"
+               >
+                  <UInput v-model.number="formCrear.cupoMaximo" type="number" :min="1" :step="1" class="w-full" />
+               </UFormField>
             </UForm>
          </template>
          <template #footer>
@@ -267,6 +298,14 @@ async function confirmarEliminar() {
                </div>
                <USwitch v-model="formEditar.esGuia" label="Es guía" />
                <USwitch v-model="formEditar.esInvestigador" label="Es investigador" />
+               <UFormField
+                  v-if="formEditar.esGuia"
+                  label="Cupo máximo"
+                  name="cupoMaximo"
+                  description="Propuestas que puede guiar a la vez"
+               >
+                  <UInput v-model.number="formEditar.cupoMaximo" type="number" :min="1" :step="1" class="w-full" />
+               </UFormField>
             </UForm>
          </template>
          <template #footer>

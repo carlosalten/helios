@@ -16,21 +16,21 @@ datasource db {
 // que referencia `rol.nombre` como string). 'Administrador' tiene bypass hardcodeado en
 // requierePermiso y nunca necesita filas en `permiso`.
 model Rol {
-  id        Int       @id @default(autoincrement())
-  nombre    String    @db.VarChar(30)
+  id                         Int       @id @default(autoincrement())
+  nombre                     String    @db.VarChar(30)
   // Rango del rol: mayor número = más alto en la jerarquía. Al crear/editar una persona o
   // cambiarle el rol (/personas/gestion), solo se pueden asignar roles con jerarquía menor o
   // igual a la del propio usuario — ver el chequeo en server/api/personas/index.post.ts y
   // server/api/personas/[id]/rol.patch.ts. 'Administrador' tiene bypass total, igual que en
   // requierePermiso, sin importar este valor.
-  jerarquia Int       @default(0)
+  jerarquia                  Int       @default(0)
   // Si las personas de este rol aparecen como profesores seleccionables/arrastrables en el
   // panel "Profesores" de /horario (ver app/pages/horario/index.vue y
   // app/pages/configuracion/index.vue, donde se administra). Default true: hasta que un
   // Administrador lo desmarque, el comportamiento es el mismo de siempre (todas las personas
   // aparecen, sin filtrar por rol).
-  mostrarEnHorarioProfesores Boolean @default(true) @map("mostrar_en_horario_profesores")
-  personas  Persona[]
+  mostrarEnHorarioProfesores Boolean   @default(true) @map("mostrar_en_horario_profesores")
+  personas                   Persona[]
 
   @@map("rol")
 }
@@ -441,24 +441,24 @@ model EncargadoSala {
 // la PK (por si algún día conviene reasignarlo sin arrastrar el id), pero es único e
 // insensible a mayúsculas en la búsqueda (ver server/api/pantallas/publico/[codigo].get.ts).
 model PantallaPublica {
-  id               Int    @id @default(autoincrement())
-  nombre           String @db.VarChar(60)
-  codigo           String @unique @db.VarChar(20)
+  id               Int       @id @default(autoincrement())
+  nombre           String    @db.VarChar(60)
+  codigo           String    @unique @db.VarChar(20)
   // Segundos que cada sala permanece en pantalla antes de pasar a la siguiente.
-  segundosPorSlide Int    @default(15) @map("segundos_por_slide")
+  segundosPorSlide Int       @default(15) @map("segundos_por_slide")
   // Cuántas próximas clases se muestran por sala en la pantalla pública. Nulo = todas las que
   // queden por comenzar hoy (opción "Todas" en /salas/pantallas) — es también el valor con el
   // que quedan las pantallas ya creadas al agregar esta columna, para no cambiarles el
   // comportamiento actual.
-  proximasPorSala  Int?   @map("proximas_por_sala")
+  proximasPorSala  Int?      @map("proximas_por_sala")
   // Ventana horaria en que la pantalla debe refrescarse (alternar entre "en curso"/
   // "próximas") — fuera de ella queda en modo de ahorro, sin volver a pedir datos al servidor
   // (ver app/pages/pantallas/[codigo].vue). Nulo/nulo = sin restricción, se refresca las 24
   // horas — comportamiento actual, y el que conservan las pantallas ya creadas al agregar esta
   // columna. Van siempre juntos (o los dos nulos o los dos con valor, validado en el propio
   // endpoint). Si horaFin < horaInicio, la ventana cruza la medianoche (ej. 20:00–06:00).
-  horaInicio DateTime? @db.Time @map("hora_inicio")
-  horaFin    DateTime? @db.Time @map("hora_fin")
+  horaInicio       DateTime? @map("hora_inicio") @db.Time
+  horaFin          DateTime? @map("hora_fin") @db.Time
 
   salas PantallaPublicaSala[]
 
@@ -621,6 +621,8 @@ model TtProfesor {
   apellido       String  @db.VarChar(30)
   esGuia         Boolean @map("es_guia")
   esInvestigador Boolean @map("es_investigador")
+  // Máximo de propuestas que puede guiar simultáneamente (ver /titulaciones/asignacion-guia).
+  cupoMaximo     Int     @default(6) @map("cupo_maximo")
 
   comisiones          TtComision[]
   lineasInvestigacion TtLineaInvestigacionProfesor[]
@@ -629,8 +631,11 @@ model TtProfesor {
 }
 
 model TtLineaInvestigacion {
-  id     Int    @id @default(autoincrement())
-  nombre String @db.VarChar(50)
+  id     Int     @id @default(autoincrement())
+  nombre String  @db.VarChar(50)
+  // Una línea inactiva sigue existiendo (propuestas ya creadas la conservan) pero no se ofrece
+  // al postular una propuesta nueva — mismo criterio que TtRol.activo.
+  activo Boolean @default(true)
 
   propuestas TtPropuesta[]
   profesores TtLineaInvestigacionProfesor[]

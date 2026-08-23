@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
 
    const [roles, lineasInvestigacion] = await Promise.all([
       prisma.ttRol.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } }),
-      prisma.ttLineaInvestigacion.findMany({ orderBy: { nombre: 'asc' } }),
+      prisma.ttLineaInvestigacion.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } }),
    ])
 
    return { roles, lineasInvestigacion }

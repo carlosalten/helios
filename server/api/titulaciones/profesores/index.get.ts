@@ -1,5 +1,8 @@
 export default defineEventHandler(async (event) => {
-   await requierePermiso(event, '/titulaciones/profesores', 'ver')
+   await requiereAlgunPermiso(event, [
+      ['/titulaciones/profesores', 'ver'],
+      ['/titulaciones/asignacion-guia', 'ver'],
+   ])
 
    return prisma.ttProfesor.findMany({ orderBy: [{ apellido: 'asc' }, { nombre: 'asc' }] })
 })

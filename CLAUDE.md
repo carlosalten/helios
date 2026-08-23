@@ -94,6 +94,8 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 - **`paralelo_cupo_rango`** — en `paralelo`, `cupo` entre 0 y 100.
 - **`feriado_horas_validas`** — en `feriado`, `hora_inicio`/`hora_termino` van ambos `null` (feriado de día completo) o ambos con valor y `hora_termino > hora_inicio` (feriado parcial).
 - **`asignatura_equivalencia_no_refleja`** — en `asignatura_equivalencia`, `asignatura_id <> equivalente_id` (una asignatura no puede ser equivalente a sí misma).
+- **`tt_profesor_cupo_maximo_positivo`** — en `tt_profesor`, `cupo_maximo >= 1`.
+- **`tt_comision_propuesta_id_guia_key`** — índice único parcial en `tt_comision` (`propuesta_id`) `WHERE rol = 'Guía'`: una propuesta no puede tener más de un profesor guía asignado a la vez (sí puede tener varias filas de comisión con otros roles).
 
 > Estas constraints se crearon con migraciones SQL a mano y **no** están representadas en `schema.prisma` (Prisma no modela CHECK/EXCLUDE). Un `prisma migrate reset` las reconstruye porque siguen en `prisma/migrations/`, pero `prisma migrate diff` contra el datamodel las reporta como "drift" esperado.
 
