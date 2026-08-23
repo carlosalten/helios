@@ -88,7 +88,7 @@ const itemsProceso = computed(() => (procesos.value ?? []).map((p) => ({ label: 
 
 /* ── Crear ───────────────────────────────────────────────── */
 const modalCrearMostrar = ref(false)
-const formCrear = reactive({ nombre: '', numero: 1, procesoId: 0 })
+const formCrear = reactive({ nombre: '', subtitulo: '', numero: 1, procesoId: 0 })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 // El servidor indica en `data.campo` cuál de los tres falló (ver crearTtGrupoSchema y los
@@ -107,6 +107,7 @@ const errorGuardarProceso = computed(() =>
 
 function abrirCrear() {
    formCrear.nombre = ''
+   formCrear.subtitulo = ''
    formCrear.numero = 1
    formCrear.procesoId = procesos.value?.[0]?.id ?? 0
    errorGuardar.value = null
@@ -121,7 +122,12 @@ async function guardar() {
    try {
       await $fetch('/api/titulaciones/grupos', {
          method: 'POST',
-         body: { nombre: formCrear.nombre, numero: Number(formCrear.numero), procesoId: Number(formCrear.procesoId) },
+         body: {
+            nombre: formCrear.nombre,
+            subtitulo: formCrear.subtitulo,
+            numero: Number(formCrear.numero),
+            procesoId: Number(formCrear.procesoId),
+         },
       })
       modalCrearMostrar.value = false
       await refresh()
@@ -138,7 +144,7 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const grupoEditar = ref<TtGrupo | null>(null)
-const formEditar = reactive({ nombre: '', numero: 1, procesoId: 0 })
+const formEditar = reactive({ nombre: '', subtitulo: '', numero: 1, procesoId: 0 })
 const errorEditar = ref<string | null>(null)
 // Ver comentario de errorGuardarCampo: mismo criterio, campo indicado por el servidor.
 const errorEditarCampo = ref<string | undefined>(undefined)
@@ -155,6 +161,7 @@ const errorEditarProceso = computed(() =>
 function abrirEditar(grupo: TtGrupo) {
    grupoEditar.value = grupo
    formEditar.nombre = grupo.nombre
+   formEditar.subtitulo = grupo.subtitulo ?? ''
    formEditar.numero = grupo.numero
    formEditar.procesoId = grupo.procesoId
    errorEditar.value = null
@@ -173,6 +180,7 @@ async function guardarEditar() {
          method: 'PATCH',
          body: {
             nombre: formEditar.nombre,
+            subtitulo: formEditar.subtitulo,
             numero: Number(formEditar.numero),
             procesoId: Number(formEditar.procesoId),
          },
@@ -239,17 +247,13 @@ async function recargarTrasCambioIntegrantes() {
    grupoSeleccionado.value = id != null ? (grupos.value?.find((g) => g.id === id) ?? null) : null
 }
 
-// Solo estudiantes del mismo proceso que el grupo abierto, y que todavía no son integrantes de
-// este grupo (si ya están en otro, igual aparecen — elegirlos los mueve a este).
+// Solo estudiantes del proceso seleccionado en el filtro de arriba y sin grupo asignado — uno ya
+// inscrito en otro grupo no aparece acá (hay que quitarlo de ese grupo primero).
 const itemsEstudiantesDisponibles = computed(() => {
-   const grupo = grupoSeleccionado.value
-   if (!grupo) return []
+   if (!grupoSeleccionado.value) return []
    return (estudiantesDisponibles.value ?? [])
-      .filter((e) => e.procesoId === grupo.procesoId && e.grupoId !== grupo.id)
-      .map((e) => ({
-         label: `${nombreCompletoIntegrante(e)} · ${e.run}${e.grupo ? ` (en ${e.grupo.nombre})` : ''}`,
-         value: e.email,
-      }))
+      .filter((e) => e.procesoId === procesoFiltroId.value && e.grupoId == null)
+      .map((e) => ({ label: `${nombreCompletoIntegrante(e)} · ${e.run}`, value: e.email }))
 })
 
 // Ref real (no un `undefined` literal en el template) para que el USelectMenu efectivamente
@@ -334,6 +338,14 @@ async function quitarIntegrante(integrante: { email: string }) {
             class="cursor-pointer"
             @select="(_e, row) => seleccionarGrupo(row)"
          >
+            <template #nombre-cell="{ row }">
+               <div class="min-w-0">
+                  <p class="text-usm-text dark:text-white">{{ row.original.nombre }}</p>
+                  <p v-if="row.original.subtitulo" class="truncate text-xs text-usm-text-muted dark:text-slate-400">
+                     {{ row.original.subtitulo }}
+                  </p>
+               </div>
+            </template>
             <template #proceso-cell="{ row }">
                <span class="text-usm-text dark:text-white">{{ row.original.proceso.anio }}</span>
             </template>
@@ -465,6 +477,9 @@ async function quitarIntegrante(integrante: { email: string }) {
                <UFormField label="Nombre" name="nombre" :error="errorGuardarNombre">
                   <UInput v-model="formCrear.nombre" placeholder="Grupo 1…" class="w-full" />
                </UFormField>
+               <UFormField label="Subtítulo (opcional)" name="subtitulo">
+                  <UInput v-model="formCrear.subtitulo" maxlength="100" class="w-full" />
+               </UFormField>
                <UFormField label="Número" name="numero" :error="errorGuardarNumero">
                   <UInput v-model.number="formCrear.numero" type="number" :min="1" :step="1" class="w-full" />
                </UFormField>
@@ -494,6 +509,9 @@ async function quitarIntegrante(integrante: { email: string }) {
             <UForm id="form-grupo-editar" :state="formEditar" class="space-y-4" @submit="guardarEditar">
                <UFormField label="Nombre" name="nombre" :error="errorEditarNombre">
                   <UInput v-model="formEditar.nombre" class="w-full" />
+               </UFormField>
+               <UFormField label="Subtítulo (opcional)" name="subtitulo">
+                  <UInput v-model="formEditar.subtitulo" maxlength="100" class="w-full" />
                </UFormField>
                <UFormField label="Número" name="numero" :error="errorEditarNumero">
                   <UInput v-model.number="formEditar.numero" type="number" :min="1" :step="1" class="w-full" />

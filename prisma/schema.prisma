@@ -578,13 +578,16 @@ model TtProceso {
 }
 
 model TtGrupo {
-  id        Int    @id @default(autoincrement())
-  nombre    String @db.VarChar(100)
+  id        Int     @id @default(autoincrement())
+  nombre    String  @db.VarChar(100)
+  // Nulo: no todos los grupos necesitan un subtítulo — complementa el nombre en la columna
+  // "Nombre" de /titulaciones/grupos (nombre arriba, subtítulo debajo).
+  subtitulo String? @db.VarChar(100)
   // Constraint `tt_grupo_numero_positivo` en BD (>= 1) y unique compuesto con procesoId acá
   // abajo: no se puede repetir el número dentro del mismo proceso, pero sí entre procesos
   // distintos (cada proceso numera sus propios grupos desde 1).
   numero    Int
-  procesoId Int    @map("proceso_id")
+  procesoId Int     @map("proceso_id")
 
   proceso     TtProceso      @relation(fields: [procesoId], references: [id])
   estudiantes TtEstudiante[]
