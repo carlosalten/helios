@@ -75,6 +75,8 @@ export interface TtEstudiante {
    grupoId: number | null
    proceso: TtProceso
    grupo: TtGrupo | null
+   // Estado de la última propuesta ingresada (la más reciente), null si nunca ingresó ninguna.
+   estadoPropuesta: string | null
 }
 
 export interface TtProfesor {

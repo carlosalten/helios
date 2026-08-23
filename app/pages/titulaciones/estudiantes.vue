@@ -13,12 +13,41 @@ const [{ data: estudiantes, status, refresh }, { data: procesos }, { data: grupo
 const { puedeCrear, puedeEditar, puedeBorrar } = usePermiso('/titulaciones/estudiantes')
 
 const busqueda = ref('')
-const procesoFiltro = ref<number | '__todos__'>('__todos__')
+
+/* ── Filtro por proceso (mismo patrón que /titulaciones/grupos) ─────────── */
+const procesosOrdenadosDesc = computed(() => [...(procesos.value ?? [])].sort((a, b) => b.anio - a.anio))
+const itemsProcesoFiltro = computed(() =>
+   procesosOrdenadosDesc.value.map((p) => ({ label: String(p.anio), value: p.id }))
+)
+// Por defecto, el proceso del año más grande (el primero tras ordenar descendente).
+const procesoFiltroId = ref<number | undefined>(procesosOrdenadosDesc.value[0]?.id)
+
+// Sentinel: Radix reserva '' para limpiar el USelect — ningún estado real usa este valor.
+const SIN_PROPUESTA = '__sin_propuesta__'
+const estadoPropuestaFiltro = ref<string>('__todos__')
+const itemsEstadoPropuestaFiltro = [
+   { label: 'Todos los estados', value: '__todos__' },
+   { label: 'Pendiente', value: 'Pendiente' },
+   { label: 'Aceptada', value: 'Aceptada' },
+   { label: 'Rechazada', value: 'Rechazada' },
+   { label: 'Antecedentes solicitados', value: 'Antecedentes solicitados' },
+   { label: 'Sin propuesta', value: SIN_PROPUESTA },
+]
+
+// Base para las cards de resumen — solo el filtro de proceso, sin la búsqueda de texto ni el
+// filtro de estado (mismo criterio que las métricas de /titulaciones/propuestas: son un resumen
+// del período, no de lo que queda visible tras buscar/filtrar en la tabla).
+const estudiantesDelProceso = computed(() =>
+   (estudiantes.value ?? []).filter((e) => procesoFiltroId.value == null || e.procesoId === procesoFiltroId.value)
+)
 
 const estudiantesFiltrados = computed(() => {
-   let lista = estudiantes.value ?? []
-   if (procesoFiltro.value !== '__todos__') {
-      lista = lista.filter((e) => e.procesoId === procesoFiltro.value)
+   let lista = estudiantesDelProceso.value
+   if (estadoPropuestaFiltro.value !== '__todos__') {
+      lista =
+         estadoPropuestaFiltro.value === SIN_PROPUESTA
+            ? lista.filter((e) => e.estadoPropuesta === null)
+            : lista.filter((e) => e.estadoPropuesta === estadoPropuestaFiltro.value)
    }
    if (busqueda.value.trim()) {
       const q = normalizarTexto(busqueda.value)
@@ -37,20 +66,46 @@ const estudiantesFiltrados = computed(() => {
 const { paginaActual, itemsPagina: estudiantesPagina, porPagina } = usePaginacion(estudiantesFiltrados)
 
 const columnas: TableColumn<TtEstudiante>[] = [
-   { accessorKey: 'nombres', header: 'Nombres' },
-   { id: 'apellidos', header: 'Apellidos' },
+   { id: 'nombreCompleto', header: 'Nombre' },
    { accessorKey: 'email', header: 'Email' },
    { accessorKey: 'run', header: 'RUN', size: 110 },
    { id: 'proceso', header: 'Proceso', size: 100 },
    { id: 'grupo', header: 'Grupo', size: 120 },
+   { id: 'estadoPropuesta', header: 'Propuesta', size: 140 },
    { id: 'acciones', header: '', size: 80 },
 ]
 
+function colorEstado(estado: string | null) {
+   if (estado === 'Pendiente') return 'info'
+   if (estado === 'Rechazada') return 'error'
+   if (estado === 'Aceptada') return 'success'
+   if (estado === 'Antecedentes solicitados') return 'warning'
+   return 'neutral'
+}
+
+function dotEstado(estado: string) {
+   if (estado === 'Pendiente') return 'bg-info'
+   if (estado === 'Rechazada') return 'bg-error'
+   if (estado === 'Antecedentes solicitados') return 'bg-warning'
+   return 'bg-success'
+}
+
+const ESTADOS_PROPUESTA = ['Pendiente', 'Aceptada', 'Rechazada', 'Antecedentes solicitados'] as const
+
+// Resumen del período (siempre según el estado de la última propuesta de cada estudiante), para
+// las cards de arriba de la tabla.
+const resumenPropuestas = computed(() => {
+   const lista = estudiantesDelProceso.value
+   return {
+      porEstado: ESTADOS_PROPUESTA.map((estado) => ({
+         estado,
+         cantidad: lista.filter((e) => e.estadoPropuesta === estado).length,
+      })),
+      sinPropuesta: lista.filter((e) => e.estadoPropuesta === null).length,
+   }
+})
+
 const itemsProceso = computed(() => (procesos.value ?? []).map((p) => ({ label: String(p.anio), value: p.id })))
-const itemsProcesoFiltro = computed(() => [
-   { label: 'Todos los procesos', value: '__todos__' as const },
-   ...itemsProceso.value,
-])
 // Sentinel 0 = "Sin grupo" (ningún id autoincrement real es 0): se convierte a null antes de
 // mandarlo al backend.
 const itemsGrupo = computed(() => [
@@ -361,6 +416,25 @@ async function procesarCargaMasiva() {
          </div>
       </div>
 
+      <!-- Resumen del período -->
+      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+         <div
+            v-for="item in resumenPropuestas.porEstado"
+            :key="item.estado"
+            class="rounded-2xl border border-default bg-default p-5"
+         >
+            <p class="flex items-center gap-1.5 text-sm font-medium text-usm-text dark:text-white">
+               <span class="size-1.5 shrink-0 rounded-full" :class="dotEstado(item.estado)" />
+               {{ item.estado }}
+            </p>
+            <p class="mt-2 text-3xl font-bold text-usm-text dark:text-white">{{ item.cantidad }}</p>
+         </div>
+         <div class="rounded-2xl border border-default bg-default p-5">
+            <p class="text-sm font-medium text-usm-text dark:text-white">Sin propuesta</p>
+            <p class="mt-2 text-3xl font-bold text-usm-text dark:text-white">{{ resumenPropuestas.sinPropuesta }}</p>
+         </div>
+      </div>
+
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
          <UInput
             v-model="busqueda"
@@ -368,7 +442,13 @@ async function procesarCargaMasiva() {
             placeholder="Buscar por nombre, email o RUN…"
             class="sm:w-72"
          />
-         <USelect v-model="procesoFiltro" :items="itemsProcesoFiltro" value-key="value" class="sm:w-52" />
+         <USelectMenu v-model="procesoFiltroId" :items="itemsProcesoFiltro" value-key="value" class="sm:w-40" />
+         <USelect
+            v-model="estadoPropuestaFiltro"
+            :items="itemsEstadoPropuestaFiltro"
+            value-key="value"
+            class="sm:w-56"
+         />
          <span class="text-sm text-usm-text-muted dark:text-slate-400">
             {{ estudiantesFiltrados.length }} estudiante{{ estudiantesFiltrados.length !== 1 ? 's' : '' }}
          </span>
@@ -385,19 +465,24 @@ async function procesarCargaMasiva() {
             @action="abrirCrear"
          />
          <UTable v-else :data="estudiantesPagina" :columns="columnas">
-            <template #apellidos-cell="{ row }">
+            <template #nombreCompleto-cell="{ row }">
                <span class="text-usm-text dark:text-white">
-                  {{ row.original.apellidoPaterno }} {{ row.original.apellidoMaterno }}
+                  {{ row.original.apellidoPaterno }} {{ row.original.apellidoMaterno }} {{ row.original.nombres }}
                </span>
             </template>
             <template #proceso-cell="{ row }">
                <span class="text-usm-text dark:text-white">{{ row.original.proceso.anio }}</span>
             </template>
             <template #grupo-cell="{ row }">
-               <span v-if="row.original.grupo" class="text-usm-text dark:text-white">
+               <span v-if="row.original.grupo" class="whitespace-normal wrap-break-word text-usm-text dark:text-white">
                   {{ row.original.grupo.nombre }}
                </span>
                <span v-else class="text-usm-text-muted italic dark:text-slate-400">Sin grupo</span>
+            </template>
+            <template #estadoPropuesta-cell="{ row }">
+               <UBadge :color="colorEstado(row.original.estadoPropuesta)" variant="subtle">
+                  {{ row.original.estadoPropuesta ?? 'Sin propuesta' }}
+               </UBadge>
             </template>
             <template #acciones-cell="{ row }">
                <div class="flex justify-end gap-1">
