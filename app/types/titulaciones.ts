@@ -151,7 +151,7 @@ export interface TtPropuestaRevision extends TtPropuestaConEstado {
       apellidoMaterno: string
       procesoId: number
       grupoId: number | null
-      grupo: { id: number; nombre: string; numero: number } | null
+      grupo: { id: number; nombre: string; numero: number; subtitulo: string | null } | null
    }
    // A lo más un elemento con rol 'Guía' (ver el índice único parcial `tt_comision_propuesta_id_guia_key`
    // en la BD) — sigue siendo un arreglo porque la relación de Prisma es de uno a muchos.

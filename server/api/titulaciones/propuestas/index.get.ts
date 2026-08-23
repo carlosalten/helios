@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
                apellidoMaterno: true,
                procesoId: true,
                grupoId: true,
-               grupo: { select: { id: true, nombre: true, numero: true } },
+               grupo: { select: { id: true, nombre: true, numero: true, subtitulo: true } },
             },
          },
          rol: true,
