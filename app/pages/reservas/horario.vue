@@ -533,6 +533,9 @@ const modalCrearMostrar = ref(false)
 const formCrear = reactive({
    titulo: '',
    fecha: '',
+   modoHorario: 'libre' as 'bloque' | 'libre',
+   bloqueInicioId: undefined as number | undefined,
+   bloqueTerminoId: undefined as number | undefined,
    inicio: '',
    fin: '',
    tipoReservaId: 0,
@@ -543,6 +546,17 @@ const formCrear = reactive({
 })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
+
+// Mismo criterio que /ayudantias: elegir el horario por bloque (del semestre vigente) o a
+// mano ("hora libre"), en vez de forzar siempre la hora exacta.
+const itemsBloque = computed(() =>
+   bloquesSemestre.value.map((b) => ({
+      label: `Bloque ${b.numero} (${horaDeISO(b.inicio)}–${horaDeISO(b.fin)})`,
+      value: b.id,
+   }))
+)
+const bloqueInicioSel = computed(() => bloquesSemestre.value.find((b) => b.id === formCrear.bloqueInicioId) ?? null)
+const bloqueTerminoSel = computed(() => bloquesSemestre.value.find((b) => b.id === formCrear.bloqueTerminoId) ?? null)
 
 const personaPropia = computed(() => (personas.value ?? []).find((p) => p.email === user.value?.email) ?? null)
 
@@ -579,6 +593,9 @@ function abrirCrear(diaValor: number, franja: Franja) {
 
    formCrear.titulo = ''
    formCrear.fecha = formatFechaISO(fecha)
+   formCrear.modoHorario = 'libre'
+   formCrear.bloqueInicioId = undefined
+   formCrear.bloqueTerminoId = undefined
    formCrear.inicio = franja.horaInicio
    formCrear.fin = minutosAHora(finSugerido)
    formCrear.tipoReservaId = itemsTipoReservaCrear.value[0]?.value ?? 0
@@ -591,6 +608,10 @@ function abrirCrear(diaValor: number, franja: Franja) {
 }
 
 async function guardar() {
+   if (formCrear.modoHorario === 'bloque' && (!bloqueInicioSel.value || !bloqueTerminoSel.value)) return
+   const inicio = formCrear.modoHorario === 'bloque' ? horaDeISO(bloqueInicioSel.value!.inicio) : formCrear.inicio
+   const fin = formCrear.modoHorario === 'bloque' ? horaDeISO(bloqueTerminoSel.value!.fin) : formCrear.fin
+
    guardando.value = true
    errorGuardar.value = null
    try {
@@ -602,8 +623,8 @@ async function guardar() {
                titulo: formCrear.titulo,
                fecha: formCrear.fecha,
                repetirHasta: formCrear.repetirHasta,
-               inicio: formCrear.inicio,
-               fin: formCrear.fin,
+               inicio,
+               fin,
                tipoReservaId: Number(formCrear.tipoReservaId),
                personaId: Number(formCrear.personaId),
                publica: formCrear.publica,
@@ -623,8 +644,8 @@ async function guardar() {
                salaCodigo: salaSeleccionada.value,
                titulo: formCrear.titulo,
                fecha: formCrear.fecha,
-               inicio: formCrear.inicio,
-               fin: formCrear.fin,
+               inicio,
+               fin,
                tipoReservaId: Number(formCrear.tipoReservaId),
                personaId: Number(formCrear.personaId),
                publica: formCrear.publica,
@@ -1528,7 +1549,35 @@ watch(editandoAlgo, async (ocupado) => {
                <UFormField label="Fecha" name="fecha">
                   <UInput v-model="formCrear.fecha" type="date" class="w-full" />
                </UFormField>
-               <div class="grid grid-cols-2 gap-4">
+               <UFormField label="Horario">
+                  <UTabs
+                     v-model="formCrear.modoHorario"
+                     :items="[
+                        { label: 'Por bloque', value: 'bloque' },
+                        { label: 'Hora libre', value: 'libre' },
+                     ]"
+                     :content="false"
+                  />
+               </UFormField>
+               <div v-if="formCrear.modoHorario === 'bloque'" class="grid grid-cols-2 gap-4">
+                  <UFormField label="Bloque de inicio" name="bloqueInicioId">
+                     <USelectMenu
+                        v-model="formCrear.bloqueInicioId"
+                        :items="itemsBloque"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+                  <UFormField label="Bloque de término" name="bloqueTerminoId">
+                     <USelectMenu
+                        v-model="formCrear.bloqueTerminoId"
+                        :items="itemsBloque"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+               </div>
+               <div v-else class="grid grid-cols-2 gap-4">
                   <UFormField label="Hora de inicio" name="inicio">
                      <UInput
                         :model-value="formCrear.inicio"
