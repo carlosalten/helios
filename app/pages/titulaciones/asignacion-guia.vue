@@ -1,12 +1,24 @@
 <script setup lang="ts">
-import type { TtProceso, TtProfesor, TtPropuestaRevision } from '~/types/titulaciones'
+import type {
+   TtGrupoConIntegrantes,
+   TtGrupoIntegrante,
+   TtProceso,
+   TtProfesor,
+   TtPropuestaRevision,
+} from '~/types/titulaciones'
 
 const toast = useToast()
 
-const [{ data: propuestas, status, refresh }, { data: profesores }, { data: procesos }] = await Promise.all([
+const [
+   { data: propuestas, status, refresh },
+   { data: profesores },
+   { data: procesos },
+   { data: grupos, refresh: refreshGrupos },
+] = await Promise.all([
    useFetch<TtPropuestaRevision[]>('/api/titulaciones/propuestas'),
    useFetch<TtProfesor[]>('/api/titulaciones/profesores'),
    useFetch<TtProceso[]>('/api/titulaciones/procesos'),
+   useFetch<TtGrupoConIntegrantes[]>('/api/titulaciones/grupos'),
 ])
 
 const { puedeEditar } = usePermiso('/titulaciones/asignacion-guia')
@@ -53,46 +65,73 @@ const propuestasDelProceso = computed(() =>
 const propuestasAceptadas = computed(() => propuestasDelProceso.value.filter((p) => ultimoEstado(p) === 'Aceptada'))
 
 /* ── Feria de Software: agrupada por equipo (TtGrupo) ───────────────────── */
-// Aparecen todos los equipos que tengan al menos un integrante postulado a Feria de Software,
-// sin importar el estado de esas propuestas (Pendiente/Aceptada/Rechazada/Antecedentes) — cada
-// integrante muestra su propio estado (ver colorEstado). Solo se puede asignar guía una vez que
-// todos los integrantes están aceptados (ver equipoListoParaAsignar): el servidor lo exige igual.
+// Aparecen TODOS los equipos del proceso seleccionado, incluso si ninguno de sus integrantes
+// ingresó propuesta todavía — a diferencia de Investigación/Proyecto propio (que son individuales
+// y solo existen si hay una propuesta), acá el equipo (TtGrupo) es la entidad, así que se lista
+// completo con su roster real. Cada integrante muestra su propio estado ("Sin propuesta" si nunca
+// postuló) y, si está aceptada, su propio botón para asignar/reasignar guía (ver
+// abrirAsignarGuia) — la asignación es por estudiante, no por equipo.
+function nombreCompletoIntegrante(i: TtGrupoIntegrante) {
+   return `${i.nombres} ${i.apellidoPaterno} ${i.apellidoMaterno}`
+}
+
 interface EquipoFeria {
    grupoId: number
    grupoNombre: string
    grupoNumero: number
    grupoSubtitulo: string | null
-   integrantes: TtPropuestaRevision[]
+   integrantes: TtGrupoIntegrante[]
 }
+
+const gruposDelProceso = computed(() =>
+   (grupos.value ?? []).filter((g) => procesoFiltroId.value == null || g.procesoId === procesoFiltroId.value)
+)
+
+/* ── Orden y filtro — Feria de Software ──────────────────────────────────── */
+type OrdenFeria = 'numero' | 'nombre'
+const ordenFeria = ref<OrdenFeria>('numero')
+const itemsOrdenFeria = [
+   { label: 'Número de grupo', value: 'numero' as const },
+   { label: 'Nombre de grupo', value: 'nombre' as const },
+]
+const numeroGrupoFiltro = ref<number | '__todos__'>('__todos__')
+const nombreGrupoFiltro = ref<string | '__todos__'>('__todos__')
+const itemsNumeroGrupoFiltro = computed(() => [
+   { label: 'Todos los números', value: '__todos__' as const },
+   ...[...new Set(gruposDelProceso.value.map((g) => g.numero))]
+      .sort((a, b) => a - b)
+      .map((n) => ({ label: String(n), value: n })),
+])
+const itemsNombreGrupoFiltro = computed(() => [
+   { label: 'Todos los nombres', value: '__todos__' as const },
+   ...[...new Set(gruposDelProceso.value.map((g) => g.nombre))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((n) => ({ label: n, value: n })),
+])
+
 const equiposFeria = computed<EquipoFeria[]>(() => {
-   const porGrupo = new Map<number, EquipoFeria>()
-   for (const p of propuestasDelProceso.value) {
-      if (p.modalidad !== 'Tesina Feria de Software' || !p.estudiante.grupo) continue
-      const grupo = p.estudiante.grupo
-      const existente = porGrupo.get(grupo.id)
-      if (existente) existente.integrantes.push(p)
-      else
-         porGrupo.set(grupo.id, {
-            grupoId: grupo.id,
-            grupoNombre: grupo.nombre,
-            grupoNumero: grupo.numero,
-            grupoSubtitulo: grupo.subtitulo,
-            integrantes: [p],
-         })
-   }
-   return [...porGrupo.values()].sort((a, b) => a.grupoNombre.localeCompare(b.grupoNombre))
+   let base = gruposDelProceso.value
+   if (numeroGrupoFiltro.value !== '__todos__') base = base.filter((g) => g.numero === numeroGrupoFiltro.value)
+   if (nombreGrupoFiltro.value !== '__todos__') base = base.filter((g) => g.nombre === nombreGrupoFiltro.value)
+   return base
+      .map((g) => ({
+         grupoId: g.id,
+         grupoNombre: g.nombre,
+         grupoNumero: g.numero,
+         grupoSubtitulo: g.subtitulo,
+         integrantes: g.estudiantes,
+      }))
+      .sort((a, b) =>
+         ordenFeria.value === 'numero' ? a.grupoNumero - b.grupoNumero : a.grupoNombre.localeCompare(b.grupoNombre)
+      )
 })
 
-// "Asignado" solo si TODOS los integrantes comparten el mismo guía (así es como esta página
-// siempre asigna: nunca deja al equipo con guías distintos entre sí).
-function guiaEquipo(equipo: EquipoFeria): string | null {
-   const emails = equipo.integrantes.map((i) => guiaDe(i)?.email ?? null)
-   const primero = emails[0]
-   return primero && emails.every((e) => e === primero) ? primero : null
-}
-// El endpoint de asignación exige que todas las propuestas involucradas estén aceptadas.
-function equipoListoParaAsignar(equipo: EquipoFeria): boolean {
-   return equipo.integrantes.every((i) => ultimoEstado(i) === 'Aceptada')
+// La asignación de guía es por estudiante (ver abrirAsignarGuia) — este resumen es solo para el
+// badge del encabezado de cada equipo: cuántos de los integrantes elegibles (propuesta aceptada,
+// único estado desde el que se puede asignar guía) ya tienen uno.
+function resumenGuiaEquipo(equipo: EquipoFeria) {
+   const elegibles = equipo.integrantes.filter((i) => i.estadoPropuesta === 'Aceptada')
+   return { asignados: elegibles.filter((i) => i.guia).length, total: elegibles.length }
 }
 
 /* ── Investigación: agrupada por línea ───────────────────────────────────── */
@@ -103,6 +142,52 @@ const investigacionPropuestas = computed(() =>
    propuestasDelProceso.value.filter((p) => p.modalidad === 'Investigación')
 )
 
+/* ── Orden y filtro — Investigación / Proyecto propio (comparten estos controles: son
+   individuales, con la misma forma, y solo uno de los dos tabs está visible a la vez) ────── */
+type OrdenIndividual = 'estudiante' | 'propuesta'
+const ordenIndividual = ref<OrdenIndividual>('estudiante')
+const itemsOrdenIndividual = [
+   { label: 'Nombre del estudiante', value: 'estudiante' as const },
+   { label: 'Nombre de la propuesta', value: 'propuesta' as const },
+]
+const estudianteFiltro = ref<string | '__todos__'>('__todos__')
+const propuestaFiltro = ref<string | '__todos__'>('__todos__')
+// La lista de la que salen las opciones de los filtros depende del tab abierto (Investigación o
+// Proyecto propio), sin filtrar/ordenar todavía — así el filtro siempre ofrece lo que hay en el
+// tab activo.
+const listaIndividualDelTab = computed(() =>
+   tabActivo.value === 'investigacion' ? investigacionPropuestas.value : proyectoPropioPropuestas.value
+)
+const itemsEstudianteFiltro = computed(() => {
+   const porEmail = new Map<string, string>()
+   for (const p of listaIndividualDelTab.value) porEmail.set(p.estudiante.email, nombreCompleto(p))
+   return [
+      { label: 'Todos los estudiantes', value: '__todos__' as const },
+      ...[...porEmail.entries()]
+         .map(([value, label]) => ({ label, value }))
+         .sort((a, b) => a.label.localeCompare(b.label)),
+   ]
+})
+const itemsPropuestaFiltro = computed(() => [
+   { label: 'Todas las propuestas', value: '__todos__' as const },
+   ...[...new Set(listaIndividualDelTab.value.map((p) => p.titulo))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((t) => ({ label: t, value: t })),
+])
+
+function aplicarOrdenYFiltroIndividual(lista: TtPropuestaRevision[]) {
+   let resultado = lista
+   if (estudianteFiltro.value !== '__todos__') {
+      resultado = resultado.filter((p) => p.estudiante.email === estudianteFiltro.value)
+   }
+   if (propuestaFiltro.value !== '__todos__') resultado = resultado.filter((p) => p.titulo === propuestaFiltro.value)
+   return [...resultado].sort((a, b) =>
+      ordenIndividual.value === 'estudiante'
+         ? nombreCompleto(a).localeCompare(nombreCompleto(b))
+         : a.titulo.localeCompare(b.titulo)
+   )
+}
+
 interface GrupoLinea {
    lineaId: number
    lineaNombre: string
@@ -110,7 +195,7 @@ interface GrupoLinea {
 }
 const investigacionPorLinea = computed<GrupoLinea[]>(() => {
    const porLinea = new Map<number, GrupoLinea>()
-   for (const p of investigacionPropuestas.value) {
+   for (const p of aplicarOrdenYFiltroIndividual(investigacionPropuestas.value)) {
       if (!p.lineaInvestigacionId) continue
       const existente = porLinea.get(p.lineaInvestigacionId)
       if (existente) existente.propuestas.push(p)
@@ -129,6 +214,7 @@ const investigacionPorLinea = computed<GrupoLinea[]>(() => {
 const proyectoPropioPropuestas = computed(() =>
    propuestasDelProceso.value.filter((p) => p.modalidad === 'Proyecto Propio')
 )
+const proyectoPropioPropuestasVista = computed(() => aplicarOrdenYFiltroIndividual(proyectoPropioPropuestas.value))
 
 // El endpoint de asignación exige que la propuesta esté aceptada (Investigación/Proyecto propio).
 function propuestaListaParaAsignar(p: TtPropuestaRevision): boolean {
@@ -138,6 +224,15 @@ function propuestaListaParaAsignar(p: TtPropuestaRevision): boolean {
 /* ── Tabs ─────────────────────────────────────────────────────────────────── */
 type TabAsignacion = 'feria' | 'investigacion' | 'proyecto'
 const tabActivo = ref<TabAsignacion>('feria')
+
+// Investigación y Proyecto propio comparten estos refs de filtro, pero cada uno tiene sus propias
+// opciones (ver itemsEstudianteFiltro/itemsPropuestaFiltro) — al cambiar de tab, el valor
+// seleccionado puede no existir en la lista nueva, así que se resetea.
+watch(tabActivo, () => {
+   estudianteFiltro.value = '__todos__'
+   propuestaFiltro.value = '__todos__'
+})
+
 const itemsTabs = computed(() => [
    { label: 'Feria de Software', value: 'feria', badge: `${equiposFeria.value.length} equipos` },
    { label: 'Investigación', value: 'investigacion', badge: `${investigacionPropuestas.value.length} postulaciones` },
@@ -153,7 +248,7 @@ const etiquetaModalidadActiva = computed(() => {
 const resumenCarga = computed(() => {
    if (tabActivo.value === 'feria') {
       const estudiantesAsignados = equiposFeria.value.reduce(
-         (acc, e) => acc + e.integrantes.filter((i) => guiaDe(i)).length,
+         (acc, e) => acc + e.integrantes.filter((i) => i.guia).length,
          0
       )
       return `${estudiantesAsignados} estudiantes FESW asignados`
@@ -165,8 +260,8 @@ const resumenCarga = computed(() => {
 
 const faltantes = computed(() => {
    if (tabActivo.value === 'feria') {
-      const n = equiposFeria.value.filter((e) => !guiaEquipo(e)).length
-      return `Faltan ${n} equipo${n === 1 ? '' : 's'}`
+      const n = equiposFeria.value.reduce((acc, e) => acc + e.integrantes.filter((i) => !i.guia).length, 0)
+      return `Faltan ${n} estudiante${n === 1 ? '' : 's'}`
    }
    const lista = tabActivo.value === 'investigacion' ? investigacionPropuestas.value : proyectoPropioPropuestas.value
    const n = lista.filter((p) => !guiaDe(p)).length
@@ -207,37 +302,54 @@ function valorGuia(email: string | null) {
 
 /* ── Asignar / quitar guía ────────────────────────────────────────────────── */
 const asignando = ref<string | null>(null)
-async function asignarGuia(propuestaIds: number[], profesorEmail: string | null, clave: string) {
+async function asignarGuia(propuestaIds: number[], profesorEmail: string | null, clave: string): Promise<boolean> {
    asignando.value = clave
    try {
       await $fetch('/api/titulaciones/asignacion-guia/asignar', {
          method: 'POST',
          body: { propuestaIds, profesorEmail },
       })
-      await refresh()
+      await Promise.all([refresh(), refreshGrupos()])
       toast.add({
          title: profesorEmail ? 'Guía asignado' : 'Guía quitado',
          color: 'success',
          icon: 'i-lucide-check-circle',
       })
+      return true
    } catch (e: unknown) {
       const mensaje = (e as { data?: { message?: string } }).data?.message ?? 'Error al asignar'
       toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
+      return false
    } finally {
       asignando.value = null
    }
 }
-function onCambiarGuiaEquipo(equipo: EquipoFeria, valor: string | undefined) {
-   const email = !valor || valor === SENTINEL_SIN_ASIGNAR ? null : valor
-   asignarGuia(
-      equipo.integrantes.map((i) => i.id),
-      email,
-      `equipo-${equipo.grupoId}`
-   )
-}
 function onCambiarGuiaIndividual(p: TtPropuestaRevision, valor: string | undefined) {
    const email = !valor || valor === SENTINEL_SIN_ASIGNAR ? null : valor
    asignarGuia([p.id], email, `prop-${p.id}`)
+}
+
+/* ── Asignar guía a un integrante de Feria de Software (modal, por estudiante) ──
+   A diferencia de Investigación/Proyecto propio (USelect inline por fila), acá se pidió
+   explícitamente un botón + modal: cada integrante con su propuesta aceptada tiene su propio
+   botón para asignar (o reasignar/quitar) su guía, independiente del resto del equipo. */
+const modalAsignarGuiaMostrar = ref(false)
+const integranteAsignar = ref<TtGrupoIntegrante | null>(null)
+const guiaModalSeleccion = ref<string | undefined>(undefined)
+
+function abrirAsignarGuia(integrante: TtGrupoIntegrante) {
+   integranteAsignar.value = integrante
+   guiaModalSeleccion.value = valorGuia(integrante.guia?.email ?? null)
+   modalAsignarGuiaMostrar.value = true
+}
+
+async function confirmarAsignarGuia() {
+   const integrante = integranteAsignar.value
+   if (!integrante?.propuestaId) return
+   const email =
+      !guiaModalSeleccion.value || guiaModalSeleccion.value === SENTINEL_SIN_ASIGNAR ? null : guiaModalSeleccion.value
+   const ok = await asignarGuia([integrante.propuestaId], email, `prop-${integrante.propuestaId}`)
+   if (ok) modalAsignarGuiaMostrar.value = false
 }
 
 /* ── Deshacer asignaciones (solo lo visible en el tab activo) ────────────── */
@@ -246,7 +358,9 @@ const deshaciendo = ref(false)
 async function confirmarDeshacer() {
    const ids =
       tabActivo.value === 'feria'
-         ? equiposFeria.value.flatMap((e) => e.integrantes.map((i) => i.id))
+         ? equiposFeria.value.flatMap((e) =>
+              e.integrantes.map((i) => i.propuestaId).filter((id): id is number => id != null)
+           )
          : tabActivo.value === 'investigacion'
            ? investigacionPropuestas.value.map((p) => p.id)
            : proyectoPropioPropuestas.value.map((p) => p.id)
@@ -260,7 +374,7 @@ async function confirmarDeshacer() {
          method: 'POST',
          body: { propuestaIds: ids, profesorEmail: null },
       })
-      await refresh()
+      await Promise.all([refresh(), refreshGrupos()])
       confirmDeshacerMostrar.value = false
       toast.add({ title: 'Asignaciones deshechas', color: 'success', icon: 'i-lucide-check-circle' })
    } catch (e: unknown) {
@@ -276,8 +390,7 @@ async function confirmarDeshacer() {
    <div class="space-y-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
          <p class="min-w-0 flex-1 text-sm text-usm-text-muted dark:text-slate-400">
-            Asigna el profesor guía de cada propuesta ya aceptada. En Feria de Software se asigna a todo el equipo a la
-            vez; en Investigación y Proyecto propio, propuesta por propuesta.
+            Asigna el profesor guía de cada propuesta ya aceptada, estudiante por estudiante.
          </p>
          <div class="flex shrink-0 items-center gap-2">
             <UBadge color="neutral" variant="subtle">{{ faltantes }}</UBadge>
@@ -309,10 +422,31 @@ async function confirmarDeshacer() {
 
             <!-- Feria de Software -->
             <div v-if="tabActivo === 'feria'" class="space-y-4">
+               <div class="flex flex-wrap gap-3 rounded-2xl border border-default bg-default p-4">
+                  <UFormField label="Ordenar por" class="w-48">
+                     <USelect v-model="ordenFeria" :items="itemsOrdenFeria" value-key="value" class="w-full" />
+                  </UFormField>
+                  <UFormField label="Filtrar por número" class="w-48">
+                     <USelectMenu
+                        v-model="numeroGrupoFiltro"
+                        :items="itemsNumeroGrupoFiltro"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+                  <UFormField label="Filtrar por nombre" class="w-48">
+                     <USelectMenu
+                        v-model="nombreGrupoFiltro"
+                        :items="itemsNombreGrupoFiltro"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+               </div>
                <EmptyState
                   v-if="!equiposFeria.length"
                   icon="i-lucide-users"
-                  message="No hay equipos con propuestas de Feria de Software."
+                  message="No hay equipos registrados en este proceso."
                />
                <div
                   v-for="equipo in equiposFeria"
@@ -331,62 +465,106 @@ async function confirmarDeshacer() {
                            {{ equipo.integrantes.length }} integrantes
                         </p>
                      </div>
-                     <UBadge :color="guiaEquipo(equipo) ? 'success' : 'warning'" variant="subtle" class="shrink-0">
-                        {{ guiaEquipo(equipo) ? 'Asignado' : 'Sin asignar' }}
+                     <UBadge
+                        v-if="resumenGuiaEquipo(equipo).total === 0"
+                        color="neutral"
+                        variant="subtle"
+                        class="shrink-0"
+                     >
+                        Sin propuestas aceptadas
+                     </UBadge>
+                     <UBadge
+                        v-else
+                        :color="
+                           resumenGuiaEquipo(equipo).asignados === resumenGuiaEquipo(equipo).total
+                              ? 'success'
+                              : 'warning'
+                        "
+                        variant="subtle"
+                        class="shrink-0"
+                     >
+                        {{ resumenGuiaEquipo(equipo).asignados }}/{{ resumenGuiaEquipo(equipo).total }} con guía
                      </UBadge>
                   </div>
 
-                  <p class="mb-2 text-xs font-medium tracking-wide text-usm-text-muted uppercase dark:text-slate-400">
-                     Integrantes que postularon
-                  </p>
-                  <div class="mb-4 space-y-2">
+                  <EmptyState
+                     v-if="!equipo.integrantes.length"
+                     icon="i-lucide-user-x"
+                     message="Este equipo no tiene integrantes."
+                  />
+                  <div v-else class="space-y-2">
                      <div
                         v-for="integrante in equipo.integrantes"
-                        :key="integrante.id"
-                        class="flex items-center justify-between gap-3 rounded-lg border border-default p-2.5"
+                        :key="integrante.email"
+                        class="space-y-2 rounded-lg border border-default p-2.5 transition-colors hover:bg-elevated/50"
                      >
-                        <div class="min-w-0">
-                           <p class="truncate text-sm font-medium text-usm-text dark:text-white">
-                              {{ nombreCompleto(integrante) }}
-                           </p>
-                           <p class="truncate text-xs text-usm-text-muted dark:text-slate-400">
-                              {{ integrante.estudiante.run }}
-                           </p>
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                           <div class="min-w-0">
+                              <p class="truncate text-sm font-medium text-usm-text dark:text-white">
+                                 {{ nombreCompletoIntegrante(integrante) }}
+                              </p>
+                              <p class="truncate text-xs text-usm-text-muted dark:text-slate-400">
+                                 {{ integrante.run }}
+                              </p>
+                           </div>
+                           <div class="flex shrink-0 items-center gap-2">
+                              <UBadge v-if="integrante.rolNombre" color="info" variant="subtle">
+                                 {{ integrante.rolNombre }}
+                              </UBadge>
+                              <UBadge :color="colorEstado(integrante.estadoPropuesta)" variant="subtle">
+                                 {{ integrante.estadoPropuesta ?? 'Sin propuesta' }}
+                              </UBadge>
+                           </div>
                         </div>
-                        <div class="flex shrink-0 items-center gap-2">
-                           <UBadge v-if="integrante.rol" color="info" variant="subtle">
-                              {{ integrante.rol.nombre }}
-                           </UBadge>
-                           <UBadge :color="colorEstado(ultimoEstado(integrante))" variant="subtle">
-                              {{ ultimoEstado(integrante) ?? 'Sin estado' }}
-                           </UBadge>
+                        <div v-if="integrante.estadoPropuesta === 'Aceptada'" class="flex justify-end">
+                           <UButton
+                              size="xs"
+                              :color="integrante.guia ? 'neutral' : 'primary'"
+                              :variant="integrante.guia ? 'soft' : 'solid'"
+                              :icon="integrante.guia ? 'i-lucide-pen' : 'i-lucide-user-plus'"
+                              :disabled="!puedeEditar"
+                              @click="abrirAsignarGuia(integrante)"
+                           >
+                              {{
+                                 integrante.guia
+                                    ? `${integrante.guia.nombre} ${integrante.guia.apellido}`
+                                    : 'Asignar guía'
+                              }}
+                           </UButton>
                         </div>
                      </div>
                   </div>
-
-                  <UFormField
-                     label="Profesor guía del equipo"
-                     :description="
-                        equipoListoParaAsignar(equipo)
-                           ? undefined
-                           : 'Todos los integrantes deben tener su propuesta aceptada para asignar guía.'
-                     "
-                  >
-                     <USelect
-                        :model-value="valorGuia(guiaEquipo(equipo))"
-                        :items="itemsProfesoresGuia"
-                        value-key="value"
-                        :disabled="!puedeEditar || !equipoListoParaAsignar(equipo)"
-                        :loading="asignando === `equipo-${equipo.grupoId}`"
-                        class="w-full"
-                        @update:model-value="(v) => onCambiarGuiaEquipo(equipo, v as string | undefined)"
-                     />
-                  </UFormField>
                </div>
             </div>
 
             <!-- Investigación -->
             <div v-else-if="tabActivo === 'investigacion'" class="space-y-6">
+               <div class="flex flex-wrap gap-3 rounded-2xl border border-default bg-default p-4">
+                  <UFormField label="Ordenar por" class="w-52">
+                     <USelect
+                        v-model="ordenIndividual"
+                        :items="itemsOrdenIndividual"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+                  <UFormField label="Filtrar por estudiante" class="w-56">
+                     <USelectMenu
+                        v-model="estudianteFiltro"
+                        :items="itemsEstudianteFiltro"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+                  <UFormField label="Filtrar por propuesta" class="w-56">
+                     <USelectMenu
+                        v-model="propuestaFiltro"
+                        :items="itemsPropuestaFiltro"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+               </div>
                <EmptyState
                   v-if="!investigacionPorLinea.length"
                   icon="i-lucide-flask-conical"
@@ -444,13 +622,39 @@ async function confirmarDeshacer() {
 
             <!-- Proyecto propio -->
             <div v-else class="space-y-3">
+               <div class="flex flex-wrap gap-3 rounded-2xl border border-default bg-default p-4">
+                  <UFormField label="Ordenar por" class="w-52">
+                     <USelect
+                        v-model="ordenIndividual"
+                        :items="itemsOrdenIndividual"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+                  <UFormField label="Filtrar por estudiante" class="w-56">
+                     <USelectMenu
+                        v-model="estudianteFiltro"
+                        :items="itemsEstudianteFiltro"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+                  <UFormField label="Filtrar por propuesta" class="w-56">
+                     <USelectMenu
+                        v-model="propuestaFiltro"
+                        :items="itemsPropuestaFiltro"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+               </div>
                <EmptyState
-                  v-if="!proyectoPropioPropuestas.length"
+                  v-if="!proyectoPropioPropuestasVista.length"
                   icon="i-lucide-lightbulb"
                   message="No hay postulaciones de Proyecto propio."
                />
                <div
-                  v-for="p in proyectoPropioPropuestas"
+                  v-for="p in proyectoPropioPropuestasVista"
                   :key="p.id"
                   class="rounded-2xl border border-default bg-default p-4"
                >
@@ -549,5 +753,41 @@ async function confirmarDeshacer() {
             deshacer.
          </p>
       </ConfirmModal>
+
+      <!-- Asignar guía a un integrante de Feria de Software -->
+      <UModal v-model:open="modalAsignarGuiaMostrar" title="Asignar profesor guía" :ui="{ footer: 'justify-end' }">
+         <template #body>
+            <div v-if="integranteAsignar" class="space-y-4">
+               <p class="text-sm text-usm-text dark:text-slate-200">
+                  <span class="font-medium">{{ nombreCompletoIntegrante(integranteAsignar) }}</span>
+                  · {{ integranteAsignar.run }}
+               </p>
+               <UFormField label="Profesor guía">
+                  <USelectMenu
+                     v-model="guiaModalSeleccion"
+                     :items="itemsProfesoresGuia"
+                     value-key="value"
+                     placeholder="Selecciona un profesor guía…"
+                     class="w-full"
+                  />
+               </UFormField>
+            </div>
+         </template>
+         <template #footer>
+            <UButton
+               variant="ghost"
+               color="neutral"
+               @click="
+                  () => {
+                     modalAsignarGuiaMostrar = false
+                  }
+               "
+               >Cancelar</UButton
+            >
+            <UButton :loading="asignando === `prop-${integranteAsignar?.propuestaId}`" @click="confirmarAsignarGuia">
+               Guardar
+            </UButton>
+         </template>
+      </UModal>
    </div>
 </template>

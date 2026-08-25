@@ -101,6 +101,8 @@ const metricasPorModalidad = computed(() =>
 const busqueda = ref('')
 const estadoFiltro = ref('__todos__')
 const modalidadFiltro = ref('__todos__')
+const grupoFiltro = ref<number | '__todos__'>('__todos__')
+const rolFiltro = ref<number | '__todos__'>('__todos__')
 
 const itemsEstado = [
    { label: 'Todos los estados', value: '__todos__' },
@@ -113,11 +115,40 @@ const itemsModalidadFiltro = [
    { label: 'Todas las modalidades', value: '__todos__' },
    ...MODALIDADES_PROPUESTA.map((m) => ({ label: m, value: m })),
 ]
+// Opciones derivadas de las propuestas del proceso (no del catálogo de /titulaciones/grupos o
+// /titulaciones/roles): así solo aparecen para filtrar los grupos/roles que efectivamente tienen
+// alguna propuesta, sin depender de si el grupo o el rol siguen activos.
+const itemsGrupoFiltro = computed(() => {
+   const grupos = new Map<number, string>()
+   for (const p of propuestasDelProceso.value) {
+      if (p.estudiante.grupo) grupos.set(p.estudiante.grupo.id, p.estudiante.grupo.nombre)
+   }
+   return [
+      { label: 'Todos los grupos', value: '__todos__' as const },
+      ...[...grupos.entries()]
+         .map(([value, label]) => ({ label, value }))
+         .sort((a, b) => a.label.localeCompare(b.label)),
+   ]
+})
+const itemsRolFiltro = computed(() => {
+   const roles = new Map<number, string>()
+   for (const p of propuestasDelProceso.value) {
+      if (p.rol) roles.set(p.rol.id, p.rol.nombre)
+   }
+   return [
+      { label: 'Todos los roles', value: '__todos__' as const },
+      ...[...roles.entries()]
+         .map(([value, label]) => ({ label, value }))
+         .sort((a, b) => a.label.localeCompare(b.label)),
+   ]
+})
 
 const propuestasFiltradas = computed(() => {
    let lista = propuestasDelProceso.value
    if (estadoFiltro.value !== '__todos__') lista = lista.filter((p) => ultimoEstado(p) === estadoFiltro.value)
    if (modalidadFiltro.value !== '__todos__') lista = lista.filter((p) => p.modalidad === modalidadFiltro.value)
+   if (grupoFiltro.value !== '__todos__') lista = lista.filter((p) => p.estudiante.grupo?.id === grupoFiltro.value)
+   if (rolFiltro.value !== '__todos__') lista = lista.filter((p) => p.rol?.id === rolFiltro.value)
    if (busqueda.value.trim()) {
       const q = normalizarTexto(busqueda.value)
       lista = lista.filter(
@@ -135,6 +166,8 @@ function limpiarFiltros() {
    busqueda.value = ''
    estadoFiltro.value = '__todos__'
    modalidadFiltro.value = '__todos__'
+   grupoFiltro.value = '__todos__'
+   rolFiltro.value = '__todos__'
 }
 
 const { paginaActual, itemsPagina: propuestasPagina, porPagina } = usePaginacion(propuestasFiltradas)
@@ -148,6 +181,7 @@ const columnas: TableColumn<TtPropuestaRevision>[] = [
       meta: { class: { th: 'hidden lg:table-cell', td: 'hidden lg:table-cell' } },
    },
    { accessorKey: 'titulo', header: 'Título propuesto' },
+   { id: 'equipo', header: 'Equipo', size: 160 },
    { id: 'estado', header: 'Estado', size: 110 },
 ]
 
@@ -381,6 +415,12 @@ async function eliminarPropuesta() {
                   class="w-full sm:w-56"
                />
             </UFormField>
+            <UFormField label="Grupo">
+               <USelect v-model="grupoFiltro" :items="itemsGrupoFiltro" value-key="value" class="w-full sm:w-48" />
+            </UFormField>
+            <UFormField label="Rol">
+               <USelect v-model="rolFiltro" :items="itemsRolFiltro" value-key="value" class="w-full sm:w-48" />
+            </UFormField>
             <UButton variant="ghost" color="neutral" icon="i-lucide-x" @click="limpiarFiltros">Limpiar</UButton>
          </div>
 
@@ -424,6 +464,16 @@ async function eliminarPropuesta() {
                      <p class="max-w-md min-w-48 whitespace-normal wrap-break-word text-usm-text dark:text-white">
                         {{ row.original.titulo }}
                      </p>
+                  </template>
+                  <template #equipo-cell="{ row }">
+                     <div v-if="row.original.modalidad === 'Tesina Feria de Software'" class="min-w-0">
+                        <p class="truncate text-usm-text dark:text-white">
+                           {{ row.original.estudiante.grupo?.nombre ?? '—' }}
+                        </p>
+                        <p v-if="row.original.rol" class="truncate text-xs text-usm-text-muted dark:text-slate-400">
+                           {{ row.original.rol.nombre }}
+                        </p>
+                     </div>
                   </template>
                   <template #estado-cell="{ row }">
                      <UBadge :color="colorEstado(ultimoEstado(row.original))" variant="subtle">
