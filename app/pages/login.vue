@@ -27,6 +27,10 @@ const turnstileRef = ref()
 async function login() {
    errorForm.value = ''
    iniciandoSesion.value = true
+   // El servidor ya normaliza el email a minúsculas antes de revisar credenciales (ver
+   // server/api/auth/login.post.ts) — se hace también acá para que, si el login falla, el campo
+   // quede mostrando el mismo valor que se envió a revisar.
+   formLogin.email = formLogin.email.trim().toLowerCase()
    try {
       await $fetch('/api/auth/login', {
          method: 'POST',
