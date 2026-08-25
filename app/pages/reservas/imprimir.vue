@@ -540,6 +540,12 @@ function imprimirHorarios() {
                            class="leading-tight not-last:mb-1 not-last:border-b not-last:border-dashed not-last:border-[#d4d4d4] not-last:pb-1"
                         >
                            <p class="font-semibold wrap-break-word text-black">{{ entrada.reserva.titulo }}</p>
+                           <p
+                              v-if="entrada.reserva.tipoReserva.nombre !== 'Clase'"
+                              class="wrap-break-word text-gray-700"
+                           >
+                              {{ entrada.reserva.tipoReserva.nombre }}
+                           </p>
                            <template v-if="esClase(entrada.reserva)">
                               <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-black">
                                  {{ nombreAsignaturaDe(entrada.reserva) }}
@@ -551,7 +557,6 @@ function imprimirHorarios() {
                                  {{ profesorDe(entrada.reserva) }}
                               </p>
                            </template>
-                           <p v-else class="wrap-break-word text-gray-700">{{ entrada.reserva.tipoReserva.nombre }}</p>
                            <p class="wrap-break-word text-gray-700">
                               {{ horaConSufijo(entrada.inicio) }}–{{ horaConSufijo(entrada.fin) }}
                            </p>

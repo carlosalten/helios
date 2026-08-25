@@ -348,6 +348,14 @@ const navItemsPreferencias = computed<NavigationMenuItem[][]>(() => [
             sidebarOpen.value = false
          },
       },
+      {
+         icon: 'i-lucide-log-out',
+         label: 'Cerrar sesión',
+         onSelect: () => {
+            sidebarOpen.value = false
+            logout()
+         },
+      },
    ],
 ])
 </script>
@@ -456,23 +464,13 @@ const navItemsPreferencias = computed<NavigationMenuItem[][]>(() => [
                   </span>
                </div>
                <div v-if="!collapsed" class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-medium text-usm-text dark:text-white">
+                  <p class="truncate text-xs font-medium text-usm-text dark:text-white">
                      {{ currentUser.nombre }} {{ currentUser.apellido }}
                   </p>
                   <p class="truncate text-xs text-usm-gray dark:text-slate-400">
                      {{ currentUser.rol }}
                   </p>
                </div>
-               <UTooltip text="Cerrar sesión">
-                  <UButton
-                     icon="i-lucide-log-out"
-                     variant="ghost"
-                     color="neutral"
-                     size="sm"
-                     aria-label="Cerrar sesión"
-                     @click="logout"
-                  />
-               </UTooltip>
             </div>
          </div>
       </aside>
