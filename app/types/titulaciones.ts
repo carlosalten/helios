@@ -25,6 +25,12 @@ export interface TtGrupoIntegrante {
    nombres: string
    apellidoPaterno: string
    apellidoMaterno: string
+   // Id de la propuesta más reciente de este integrante (para /titulaciones/asignacion-guia, que
+   // necesita el id para asignarle un guía) — null si nunca presentó ninguna.
+   propuestaId: number | null
+   // Rol de esa propuesta (solo aplica a "Tesina Feria de Software") — null si no tiene propuesta
+   // o la modalidad no usa rol.
+   rolNombre: string | null
    estadoPropuesta: string | null
    // Profesor guía de la propuesta más reciente de este integrante (rol 'Guía' en TtComision),
    // null si no tiene ninguno asignado.
