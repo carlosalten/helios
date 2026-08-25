@@ -1489,10 +1489,9 @@ watch(editandoAlgo, async (ocupado) => {
                                                 }}
                                              </div>
                                           </template>
-                                          <!-- Reservas que no son de clases (reuniones, eventos, Ayudantías creadas a mano,
-                                               etc.) no traen asignatura/carrera que mostrar — se muestra en su lugar quién
-                                               figura como responsable, si tiene uno asignado. -->
-                                          <div v-else-if="rp.reserva.persona" class="truncate">
+                                          <!-- Quién figura como responsable, en cualquier tipo de reserva (clases,
+                                               ayudantías, reuniones, eventos…) — si tiene uno asignado. -->
+                                          <div v-if="rp.reserva.persona" class="truncate">
                                              {{ rp.reserva.persona.nombre }} {{ rp.reserva.persona.apellido }}
                                           </div>
                                        </div>
@@ -1980,6 +1979,12 @@ watch(editandoAlgo, async (ocupado) => {
                            >
                               {{ entrada.reserva.titulo }}
                            </p>
+                           <p
+                              v-if="entrada.reserva.tipoReserva.nombre !== 'Clase'"
+                              class="wrap-break-word text-gray-700"
+                           >
+                              {{ entrada.reserva.tipoReserva.nombre }}
+                           </p>
                            <template v-if="esClase(entrada.reserva)">
                               <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-black">
                                  {{ nombreAsignaturaDe(entrada.reserva) }}
@@ -1991,7 +1996,6 @@ watch(editandoAlgo, async (ocupado) => {
                                  {{ profesorDe(entrada.reserva) }}
                               </p>
                            </template>
-                           <p v-else class="wrap-break-word text-gray-700">{{ entrada.reserva.tipoReserva.nombre }}</p>
                            <p class="wrap-break-word text-gray-700">
                               {{ horaConSufijo(entrada.inicio) }}–{{ horaConSufijo(entrada.fin) }}
                            </p>
