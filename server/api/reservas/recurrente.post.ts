@@ -26,7 +26,8 @@ export default defineEventHandler(async (event) => {
    if (parsed.data.personaId != null && !persona)
       throw createError({ statusCode: 404, message: 'Persona no encontrada' })
    if (!tipoReserva) throw createError({ statusCode: 404, message: 'Tipo de reserva no encontrado' })
-   if (parsed.data.paraleloId != null && !paralelo) throw createError({ statusCode: 404, message: 'Paralelo no encontrado' })
+   if (parsed.data.paraleloId != null && !paralelo)
+      throw createError({ statusCode: 404, message: 'Paralelo no encontrado' })
 
    const unaSemanaMs = 7 * 24 * 60 * 60 * 1000
    const primeraFecha = new Date(`${parsed.data.fecha}T00:00:00.000Z`)
@@ -38,10 +39,26 @@ export default defineEventHandler(async (event) => {
 
    const inicio = new Date(`1970-01-01T${parsed.data.inicio}:00.000Z`)
    const fin = new Date(`1970-01-01T${parsed.data.fin}:00.000Z`)
+
+   // Una Ayudantía sigue el horario de clases: si un feriado del semestre suspende las clases
+   // ese día (día completo, u horas que se solapan con este horario), tampoco corresponde
+   // reservar la sala — mismo criterio que las sesiones de Clase (ver regenerarReservaSesion).
+   // El resto de tipos de reserva (reuniones, eventos…) no siguen el calendario de clases, así
+   // que no se filtran: paraleloId solo lo usan las Ayudantías.
+   let fechasAReservar = fechas
+   if (parsed.data.paraleloId != null) {
+      const feriados = await prisma.feriado.findMany({ where: { fecha: { in: fechas } } })
+      const feriadosPorFecha = new Map(feriados.map((f) => [f.fecha.getTime(), f]))
+      fechasAReservar = fechas.filter((fecha) => {
+         const feriado = feriadosPorFecha.get(fecha.getTime())
+         return !feriado || !feriadoCubreBloque(feriado, { inicio, fin })
+      })
+   }
+
    const serieId = randomUUID()
 
    await prisma.reserva.createMany({
-      data: fechas.map((fecha) => ({
+      data: fechasAReservar.map((fecha) => ({
          salaCodigo: parsed.data.salaCodigo,
          titulo: parsed.data.titulo,
          subtitulo: parsed.data.subtitulo ?? null,
@@ -58,5 +75,5 @@ export default defineEventHandler(async (event) => {
 
    publicarEventoReserva(usuario, 'crear', parsed.data.salaCodigo)
 
-   return { ok: true, cantidad: fechas.length }
+   return { ok: true, cantidad: fechasAReservar.length }
 })
