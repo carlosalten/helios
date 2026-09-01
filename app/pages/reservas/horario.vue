@@ -558,6 +558,19 @@ const itemsBloque = computed(() =>
 const bloqueInicioSel = computed(() => bloquesSemestre.value.find((b) => b.id === formCrear.bloqueInicioId) ?? null)
 const bloqueTerminoSel = computed(() => bloquesSemestre.value.find((b) => b.id === formCrear.bloqueTerminoId) ?? null)
 
+// Bloque que contiene una hora dada (para preseleccionar al hacer click en una celda de la
+// grilla) — null si la hora cae en un tramo sin bloque (recreo, almuerzo, etc.).
+function bloqueDeHora(horaISO: string) {
+   const minutos = horaAMinutos(horaISO)
+   return (
+      bloquesSemestre.value.find((b) => {
+         const inicioMin = horaAMinutos(horaDeISO(b.inicio))
+         const finMin = horaAMinutos(horaDeISO(b.fin))
+         return minutos >= inicioMin && minutos < finMin
+      }) ?? null
+   )
+}
+
 const personaPropia = computed(() => (personas.value ?? []).find((p) => p.email === user.value?.email) ?? null)
 
 // Cada tipo de reserva trae su propio valor por defecto para "Reserva pública" (ver
@@ -591,11 +604,19 @@ function abrirCrear(diaValor: number, franja: Franja) {
    const finMaximo = ultimaFranja ? horaAMinutos(ultimaFranja.horaFin) : horaAMinutos(franja.horaFin)
    const finSugerido = Math.min(horaAMinutos(franja.horaInicio) + 30, finMaximo)
 
+   // Al abrir desde una celda, se preselecciona el bloque donde cayó el click como inicio y el
+   // siguiente como término (el mismo si se hizo click en el último bloque del semestre). Si la
+   // celda cae en un tramo sin bloque (recreo, almuerzo), no hay nada sensato que preseleccionar
+   // y se parte en modo "Hora libre".
+   const bloqueClic = bloqueDeHora(franja.horaInicio)
+   const idxBloqueClic = bloqueClic ? bloquesSemestre.value.findIndex((b) => b.id === bloqueClic.id) : -1
+   const bloqueSiguiente = idxBloqueClic >= 0 ? (bloquesSemestre.value[idxBloqueClic + 1] ?? bloqueClic) : null
+
    formCrear.titulo = ''
    formCrear.fecha = formatFechaISO(fecha)
-   formCrear.modoHorario = 'libre'
-   formCrear.bloqueInicioId = undefined
-   formCrear.bloqueTerminoId = undefined
+   formCrear.modoHorario = bloqueClic ? 'bloque' : 'libre'
+   formCrear.bloqueInicioId = bloqueClic?.id
+   formCrear.bloqueTerminoId = bloqueSiguiente?.id ?? bloqueClic?.id
    formCrear.inicio = franja.horaInicio
    formCrear.fin = minutosAHora(finSugerido)
    formCrear.tipoReservaId = itemsTipoReservaCrear.value[0]?.value ?? 0
