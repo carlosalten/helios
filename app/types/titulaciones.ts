@@ -143,6 +143,9 @@ export interface TtPropuestaConEstado extends TtPropuesta {
    rol: TtRol | null
    lineaInvestigacion: TtLineaInvestigacion | null
    estados: TtEstado[]
+   // A lo más un elemento con rol 'Guía' (ver el índice único parcial `tt_comision_propuesta_id_guia_key`
+   // en la BD) — sigue siendo un arreglo porque la relación de Prisma es de uno a muchos.
+   comision: { profesor: { email: string; nombre: string; apellido: string } }[]
 }
 
 // Forma que devuelve GET /api/titulaciones/propuestas (staff, todas las propuestas): igual que

@@ -12,6 +12,10 @@ export default defineEventHandler(async (event) => {
          rol: true,
          lineaInvestigacion: true,
          estados: { orderBy: { fechaHora: 'desc' } },
+         comision: {
+            where: { rol: ROL_COMISION_GUIA },
+            include: { profesor: { select: { email: true, nombre: true, apellido: true } } },
+         },
       },
    })
    if (!propuesta || propuesta.estudianteEmail !== estudiante.email) {

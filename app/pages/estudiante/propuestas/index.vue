@@ -14,6 +14,10 @@ function ultimoEstado(propuesta: TtPropuestaConEstado) {
    return propuesta.estados[0]?.estado ?? null
 }
 
+function guiaDe(propuesta: TtPropuestaConEstado) {
+   return propuesta.comision[0]?.profesor ?? null
+}
+
 function colorEstado(estado: string | null) {
    if (estado === 'Pendiente') return 'info'
    if (estado === 'Rechazada') return 'error'
@@ -152,9 +156,18 @@ async function onGuardado() {
                   </p>
                </div>
                <div class="flex shrink-0 flex-col items-end gap-2">
-                  <UBadge :color="colorEstado(ultimoEstado(propuesta))" variant="subtle">
-                     {{ ultimoEstado(propuesta) ?? 'Sin estado' }}
-                  </UBadge>
+                  <div class="flex flex-wrap items-center justify-end gap-2">
+                     <UBadge :color="colorEstado(ultimoEstado(propuesta))" variant="subtle">
+                        {{ ultimoEstado(propuesta) ?? 'Sin estado' }}
+                     </UBadge>
+                     <UBadge :color="guiaDe(propuesta) ? 'success' : 'neutral'" variant="subtle">
+                        {{
+                           guiaDe(propuesta)
+                              ? `Guía: ${guiaDe(propuesta)!.nombre} ${guiaDe(propuesta)!.apellido}`
+                              : 'Sin guía asignado'
+                        }}
+                     </UBadge>
+                  </div>
                   <UButton
                      :to="`/estudiante/propuestas/${propuesta.id}`"
                      icon="i-lucide-file-text"
