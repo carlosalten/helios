@@ -22,5 +22,10 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, message: 'Propuesta no encontrada' })
    }
 
+   // Si el proceso todavía no habilita mostrar el guía a sus estudiantes, no viaja el dato al
+   // cliente — no basta con ocultarlo en el frontend (ver TtProceso.mostrarGuiaEstudiantes).
+   if (!estudiante.proceso.mostrarGuiaEstudiantes) {
+      return { ...propuesta, comision: [] }
+   }
    return propuesta
 })

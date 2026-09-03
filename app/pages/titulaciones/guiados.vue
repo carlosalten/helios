@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { MODALIDADES_PROPUESTA } from '~/types/titulaciones'
+import { LEYENDA_COLOR_MODALIDAD, MODALIDADES_PROPUESTA } from '~/types/titulaciones'
 import type { TtProceso, TtProfesor, TtPropuestaRevision } from '~/types/titulaciones'
 
 const toast = useToast()
@@ -44,9 +44,12 @@ interface AlumnoGuiado {
    run: string
    email: string
    modalidad: string
+   tituloPropuesta: string
    // Solo aplica a "Tesina Feria de Software" — null en el resto de modalidades.
    grupoNombre: string | null
    rolEnEquipo: string | null
+   // Solo aplica a "Investigación" — null en el resto de modalidades.
+   lineaInvestigacionNombre: string | null
 }
 
 interface ProfesorConGuiados {
@@ -62,14 +65,17 @@ interface AlumnoConProfesor extends AlumnoGuiado {
 const alumnosConProfesor = computed<AlumnoConProfesor[]>(() =>
    propuestasConGuia.value.map((p) => {
       const esFeria = p.modalidad === 'Tesina Feria de Software'
+      const esInvestigacion = p.modalidad === 'Investigación'
       return {
          propuestaId: p.id,
          nombreCompleto: nombreCompleto(p),
          run: p.estudiante.run,
          email: p.estudiante.email,
          modalidad: p.modalidad,
+         tituloPropuesta: p.titulo,
          grupoNombre: esFeria ? (p.estudiante.grupo?.nombre ?? null) : null,
          rolEnEquipo: esFeria ? (p.rol?.nombre ?? null) : null,
+         lineaInvestigacionNombre: esInvestigacion ? (p.lineaInvestigacion?.nombre ?? null) : null,
          profesorEmail: guiaDe(p)!.email,
       }
    })
@@ -97,6 +103,20 @@ const profesoresConGuiados = computed<ProfesorConGuiados[]>(() => {
       )
 })
 
+// Desglose por modalidad para la barra "Por profesor" del panel Cupos — mismos colores que
+// /titulaciones/asignacion-guia (LEYENDA_COLOR_MODALIDAD en app/types/titulaciones.ts), para que
+// el color de una modalidad no cambie de significado entre pantallas.
+const cargaPorProfesorModalidad = computed(() =>
+   profesoresConGuiados.value.map((pg) => ({
+      profesor: pg.profesor,
+      total: pg.alumnos.length,
+      porModalidad: LEYENDA_COLOR_MODALIDAD.map((m) => ({
+         ...m,
+         cantidad: pg.alumnos.filter((a) => a.modalidad === m.modalidad).length,
+      })),
+   }))
+)
+
 /* ── Informar por correo (mailto) ─────────────────────────────────────────
    El botón de cada card arma un mailto: con el listado COMPLETO de alumnos asignados al
    profesor en el proceso seleccionado — no el filtrado por el buscador/modalidad/grupo/rol de
@@ -114,10 +134,15 @@ const procesoLabelActual = computed(
 )
 
 function lineaAlumnoCorreo(alumno: AlumnoGuiado, indice: number) {
-   const campos = [alumno.nombreCompleto, `RUT ${alumno.run}`, alumno.email, alumno.modalidad]
-   if (alumno.grupoNombre) campos.push(`Grupo: ${alumno.grupoNombre}`)
-   if (alumno.rolEnEquipo) campos.push(`Rol: ${alumno.rolEnEquipo}`)
-   return `${indice + 1}. ${campos.join(' · ')}`
+   const detalle = [alumno.modalidad]
+   if (alumno.grupoNombre) detalle.push(`Equipo: ${alumno.grupoNombre}`)
+   if (alumno.rolEnEquipo) detalle.push(`Rol: ${alumno.rolEnEquipo}`)
+   if (alumno.lineaInvestigacionNombre) detalle.push(`Línea de investigación: ${alumno.lineaInvestigacionNombre}`)
+   return [
+      `${indice + 1}. ${alumno.nombreCompleto} · RUT: ${alumno.run} · ${alumno.email}`,
+      detalle.join(' · '),
+      `Título: ${alumno.tituloPropuesta}`,
+   ].join('\n')
 }
 
 function mailtoDe(profesor: TtProfesor) {
@@ -127,16 +152,75 @@ function mailtoDe(profesor: TtProfesor) {
       `Estimado/a ${profesor.nombre} ${profesor.apellido}:`,
       '',
       `Junto con saludar, le informo que se le ha asignado como profesor(a) guía de ${alumnos.length} ` +
-         `estudiante${alumnos.length === 1 ? '' : 's'} en el proceso ${procesoLabelActual.value} de Ingeniería en Informática:`,
+      `estudiante${alumnos.length === 1 ? '' : 's'} en el proceso ${procesoLabelActual.value} de Ingeniería en Informática:`,
       '',
-      'Dichos estudiantes son los siguientes:',
+      ...alumnos.flatMap((a, i) => [lineaAlumnoCorreo(a, i), ...(i < alumnos.length - 1 ? [''] : [])]),
       '',
-      ...alumnos.map((a, i) => lineaAlumnoCorreo(a, i)),
-      '',
-      'Saludos cordiales.',
-      'Jefatura de Carrera Ingeniería en Informática',
    ].join('\n')
    return `mailto:${profesor.email}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`
+}
+
+/* ── Descargar CSV del proceso ─────────────────────────────────────────────
+   A diferencia del resto de la página (agrupada por profesor guía y solo alumnos ya
+   asignados), el CSV exporta TODAS las propuestas del proceso seleccionado, tengan o no guía
+   asignado — una fila por propuesta, no por alumno (un alumno con más de una propuesta
+   presentada aparece una vez por cada una). */
+function celdaCsv(valor: string) {
+   return `"${valor.replace(/"/g, '""')}"`
+}
+
+function formatFechaCsv(fecha: string) {
+   return new Date(fecha).toLocaleDateString('es-CL', { timeZone: 'UTC' })
+}
+
+function descargarCsv() {
+   const encabezados = [
+      'Nombres',
+      'Apellido paterno',
+      'Apellido materno',
+      'RUN',
+      'Email',
+      'Modalidad',
+      'Estado',
+      'Título propuesta',
+      'Fecha propuesta',
+      'Grupo',
+      'Rol en equipo',
+      'Línea de investigación',
+      'Profesor guía',
+   ]
+   const filas = propuestasDelProceso.value.map((p) => {
+      const esFeria = p.modalidad === 'Tesina Feria de Software'
+      const esInvestigacion = p.modalidad === 'Investigación'
+      const guia = guiaDe(p)
+      return [
+         p.estudiante.nombres,
+         p.estudiante.apellidoPaterno,
+         p.estudiante.apellidoMaterno,
+         p.estudiante.run,
+         p.estudiante.email,
+         p.modalidad,
+         p.estados[0]?.estado ?? '',
+         p.titulo,
+         formatFechaCsv(p.fecha),
+         esFeria ? (p.estudiante.grupo?.nombre ?? '') : '',
+         esFeria ? (p.rol?.nombre ?? '') : '',
+         esInvestigacion ? (p.lineaInvestigacion?.nombre ?? '') : '',
+         guia ? `${guia.nombre} ${guia.apellido}` : '',
+      ]
+   })
+
+   const contenido = [encabezados, ...filas]
+      .map((fila) => fila.map((v) => celdaCsv(String(v))).join(';'))
+      .join('\r\n')
+   // BOM al inicio: para que Excel detecte UTF-8 y no rompa las tildes/ñ.
+   const blob = new Blob(['﻿' + contenido], { type: 'text/csv;charset=utf-8;' })
+   const url = URL.createObjectURL(blob)
+   const enlace = document.createElement('a')
+   enlace.href = url
+   enlace.download = `propuestas-titulacion-proceso-${procesoLabelActual.value}.csv`
+   enlace.click()
+   URL.revokeObjectURL(url)
 }
 
 /* ── Filtros de la lista (profesor, modalidad, grupo, rol) y buscador ────── */
@@ -289,9 +373,17 @@ async function confirmarCambiarGuia() {
 
 <template>
    <div class="space-y-6">
-      <p class="text-sm text-usm-text-muted dark:text-slate-400">
-         Alumnos con profesor guía ya asignado, agrupados por profesor.
-      </p>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+         <p class="text-sm text-usm-text-muted dark:text-slate-400">
+            Alumnos con profesor guía ya asignado, agrupados por profesor.
+         </p>
+         <UTooltip text="Descarga un CSV con todas las propuestas del proceso seleccionado">
+            <UButton icon="i-lucide-download" color="success" variant="outline" :disabled="!propuestasDelProceso.length"
+               @click="descargarCsv">
+               Descargar CSV
+            </UButton>
+         </UTooltip>
+      </div>
 
       <UFormField label="Proceso" class="max-w-xs">
          <USelectMenu v-model="procesoFiltroId" :items="itemsProcesoFiltro" value-key="value" class="w-full" />
@@ -319,61 +411,39 @@ async function confirmarCambiarGuia() {
 
       <div v-else class="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
          <div class="min-w-0 space-y-4">
-            <EmptyState
-               v-if="!profesoresGuiadosFiltrados.length"
-               icon="i-lucide-graduation-cap"
-               :message="
-                  hayFiltrosActivos || profesorFiltro !== '__todos__'
-                     ? 'Ningún profesor coincide con los filtros aplicados.'
-                     : 'No hay profesores guía registrados.'
-               "
-            />
-            <div
-               v-for="pg in profesoresGuiadosFiltrados"
-               :key="pg.profesor.email"
-               class="rounded-2xl border border-default bg-default p-4"
-            >
+            <EmptyState v-if="!profesoresGuiadosFiltrados.length" icon="i-lucide-graduation-cap" :message="hayFiltrosActivos || profesorFiltro !== '__todos__'
+               ? 'Ningún profesor coincide con los filtros aplicados.'
+               : 'No hay profesores guía registrados.'
+               " />
+            <div v-for="pg in profesoresGuiadosFiltrados" :key="pg.profesor.email"
+               class="rounded-2xl border border-default bg-default p-4">
                <div class="mb-3 flex items-start justify-between gap-3">
                   <div class="min-w-0">
-                     <p class="truncate font-semibold text-usm-text dark:text-white">
+                     <p class="truncate font-semibold text-usm-blue dark:text-usm-cyan">
                         {{ pg.profesor.nombre }} {{ pg.profesor.apellido }}
                      </p>
                      <p class="truncate text-xs text-usm-text-muted dark:text-slate-400">{{ pg.profesor.email }}</p>
                   </div>
-                  <div class="flex shrink-0 flex-col items-end gap-1.5">
-                     <UBadge :color="pg.alumnos.length > pg.profesor.cupoMaximo ? 'error' : 'neutral'" variant="subtle">
+                  <div class="flex shrink-0 flex-row items-end gap-1.5">
+                     <UBadge :color="pg.alumnos.length > pg.profesor.cupoMaximo ? 'error' : 'primary'" variant="subtle">
                         {{ pg.alumnos.length }}/{{ pg.profesor.cupoMaximo }} alumnos
                      </UBadge>
                      <UTooltip text="Le envía un correo con la lista de sus alumnos asignados">
-                        <UButton
-                           size="xs"
-                           color="neutral"
-                           variant="soft"
-                           icon="i-lucide-mail"
-                           :disabled="!alumnosCompletosDe(pg.profesor.email).length"
-                           :to="mailtoDe(pg.profesor)"
-                        >
-                           Informar por correo
+                        <UButton size="xs" color="secondary" variant="outline" icon="i-lucide-mail"
+                           :disabled="!alumnosCompletosDe(pg.profesor.email).length" :to="mailtoDe(pg.profesor)">
+
                         </UButton>
                      </UTooltip>
                   </div>
                </div>
 
-               <EmptyState
-                  v-if="!pg.alumnos.length"
-                  icon="i-lucide-user-x"
-                  :message="
-                     hayFiltrosActivos
-                        ? 'Ningún alumno de este profesor coincide con los filtros aplicados.'
-                        : 'Este profesor no tiene alumnos asignados.'
-                  "
-               />
+               <EmptyState v-if="!pg.alumnos.length" icon="i-lucide-user-x" :message="hayFiltrosActivos
+                  ? 'Ningún alumno de este profesor coincide con los filtros aplicados.'
+                  : 'Este profesor no tiene alumnos asignados.'
+                  " />
                <div v-else class="space-y-2">
-                  <div
-                     v-for="alumno in pg.alumnos"
-                     :key="alumno.propuestaId"
-                     class="rounded-lg border border-default p-2.5 transition-colors hover:bg-elevated/50"
-                  >
+                  <div v-for="alumno in pg.alumnos" :key="alumno.propuestaId"
+                     class="rounded-lg border border-default p-2.5 transition-colors hover:bg-elevated/50">
                      <div class="flex flex-wrap items-start justify-between gap-3">
                         <div class="min-w-0">
                            <p class="truncate text-sm font-medium text-usm-text dark:text-white">
@@ -385,14 +455,8 @@ async function confirmarCambiarGuia() {
                         </div>
                         <div class="flex shrink-0 flex-col items-end gap-1.5">
                            <UBadge color="info" variant="subtle">{{ alumno.modalidad }}</UBadge>
-                           <UButton
-                              size="xs"
-                              color="neutral"
-                              variant="soft"
-                              icon="i-lucide-pen"
-                              :disabled="!puedeEditar"
-                              @click="abrirCambiarGuia(pg.profesor.email, alumno)"
-                           >
+                           <UButton size="xs" color="neutral" variant="soft" icon="i-lucide-pen"
+                              :disabled="!puedeEditar" @click="abrirCambiarGuia(pg.profesor.email, alumno)">
                               Cambiar guía
                            </UButton>
                         </div>
@@ -418,23 +482,17 @@ async function confirmarCambiarGuia() {
                      </span>
                   </div>
                   <div class="h-1.5 w-full overflow-hidden rounded-full bg-elevated">
-                     <div
-                        class="h-full bg-usm-blue dark:bg-usm-cyan"
-                        :style="{
-                           width: `${resumenCupos.cupoTotal ? Math.min(100, (resumenCupos.asignados / resumenCupos.cupoTotal) * 100) : 0}%`,
-                        }"
-                     />
+                     <div class="h-full bg-usm-blue dark:bg-usm-cyan" :style="{
+                        width: `${resumenCupos.cupoTotal ? Math.min(100, (resumenCupos.asignados / resumenCupos.cupoTotal) * 100) : 0}%`,
+                     }" />
                   </div>
                </div>
                <h4 class="mb-2 text-xs font-semibold tracking-wide text-usm-text-muted uppercase dark:text-slate-400">
                   Por modalidad
                </h4>
                <div class="mb-4 space-y-2">
-                  <div
-                     v-for="m in resumenCupos.porModalidad"
-                     :key="m.modalidad"
-                     class="flex items-center justify-between gap-2 text-sm"
-                  >
+                  <div v-for="m in resumenCupos.porModalidad" :key="m.modalidad"
+                     class="flex items-center justify-between gap-2 text-sm">
                      <span class="text-usm-text dark:text-slate-200">{{ m.modalidad }}</span>
                      <span class="font-semibold text-usm-text dark:text-white">{{ m.cantidad }}</span>
                   </div>
@@ -443,24 +501,40 @@ async function confirmarCambiarGuia() {
                <h4 class="mb-2 text-xs font-semibold tracking-wide text-usm-text-muted uppercase dark:text-slate-400">
                   Por profesor
                </h4>
+               <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span
+                     v-for="m in LEYENDA_COLOR_MODALIDAD"
+                     :key="m.modalidad"
+                     class="flex items-center gap-1.5 text-xs text-usm-text-muted dark:text-slate-400"
+                  >
+                     <span class="size-2 shrink-0 rounded-full" :class="m.clase" />
+                     {{ m.etiqueta }}
+                  </span>
+               </div>
                <div class="max-h-[50vh] space-y-3 overflow-y-auto pe-1">
-                  <div v-for="pg in profesoresConGuiados" :key="pg.profesor.email">
+                  <div v-for="c in cargaPorProfesorModalidad" :key="c.profesor.email">
                      <div class="mb-1 flex items-center justify-between gap-2">
                         <p class="truncate text-sm text-usm-text dark:text-slate-200">
-                           {{ pg.profesor.nombre }} {{ pg.profesor.apellido }}
+                           {{ c.profesor.nombre }} {{ c.profesor.apellido }}
                         </p>
                         <span class="shrink-0 text-sm font-semibold text-usm-text dark:text-white">
-                           {{ pg.alumnos.length }}/{{ pg.profesor.cupoMaximo }}
+                           {{ c.total }}/{{ c.profesor.cupoMaximo }}
                         </span>
                      </div>
-                     <div class="h-1.5 w-full overflow-hidden rounded-full bg-elevated">
+                     <div class="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full bg-elevated">
                         <div
-                           class="h-full bg-usm-blue dark:bg-usm-cyan"
-                           :style="{
-                              width: `${Math.min(100, (pg.alumnos.length / pg.profesor.cupoMaximo) * 100)}%`,
-                           }"
+                           v-for="m in c.porModalidad"
+                           :key="m.modalidad"
+                           class="h-full"
+                           :class="m.clase"
+                           :style="{ width: `${Math.min(100, (m.cantidad / c.profesor.cupoMaximo) * 100)}%` }"
                         />
                      </div>
+                     <p class="mt-1 text-xs text-usm-text-muted dark:text-slate-400">
+                        <template v-for="(m, i) in c.porModalidad" :key="m.modalidad"
+                           >{{ i > 0 ? ' · ' : '' }}{{ m.cantidad }} {{ m.etiqueta }}</template
+                        >
+                     </p>
                   </div>
                </div>
             </div>
@@ -476,27 +550,17 @@ async function confirmarCambiarGuia() {
                   · {{ alumnoCambiarGuia.run }}
                </p>
                <UFormField label="Profesor guía">
-                  <USelectMenu
-                     v-model="guiaModalSeleccion"
-                     :items="itemsProfesoresGuia"
-                     value-key="value"
-                     placeholder="Selecciona un profesor guía…"
-                     class="w-full"
-                  />
+                  <USelectMenu v-model="guiaModalSeleccion" :items="itemsProfesoresGuia" value-key="value"
+                     placeholder="Selecciona un profesor guía…" class="w-full" />
                </UFormField>
             </div>
          </template>
          <template #footer>
-            <UButton
-               variant="ghost"
-               color="neutral"
-               @click="
-                  () => {
-                     modalCambiarGuiaMostrar = false
-                  }
-               "
-               >Cancelar</UButton
-            >
+            <UButton variant="ghost" color="neutral" @click="
+               () => {
+                  modalCambiarGuiaMostrar = false
+               }
+            ">Cancelar</UButton>
             <UButton :loading="asignando === `prop-${alumnoCambiarGuia?.propuestaId}`" @click="confirmarCambiarGuia">
                Guardar
             </UButton>
