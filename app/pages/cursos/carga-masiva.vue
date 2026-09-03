@@ -426,6 +426,10 @@ async function cargar() {
                {{ resultado.eliminados.paralelos }} paralelo(s), {{ resultado.eliminados.sesiones }} sesión(es) y
                {{ resultado.eliminados.reservas }} reserva(s).
             </p>
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+               {{ resultado.reservasAyudantiaReasignadas }} reserva(s) de Ayudantía que dependían de un paralelo borrado
+               se reenlazaron automáticamente al paralelo nuevo equivalente.
+            </p>
 
             <div v-if="resultado.advertencias.length" class="space-y-2">
                <p class="text-sm font-medium text-warning-700 dark:text-warning-300">

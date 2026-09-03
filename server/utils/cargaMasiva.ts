@@ -938,6 +938,10 @@ export interface ResultadoCargaMasiva {
    sesionesCreadas: number
    reservasCreadas: number
    eliminados: { cursos: number; paralelos: number; sesiones: number; reservas: number }
+   // Reservas de Ayudantía (Reserva.paraleloId) que apuntaban a un paralelo borrado en esta
+   // carga y se volvieron a enlazar automáticamente al paralelo nuevo equivalente — ver el
+   // reenlace en ejecutarCargaMasiva.
+   reservasAyudantiaReasignadas: number
 }
 
 export async function ejecutarCargaMasiva(ejecucion: EjecucionCargaMasiva): Promise<ResultadoCargaMasiva> {
@@ -966,7 +970,7 @@ export async function ejecutarCargaMasiva(ejecucion: EjecucionCargaMasiva): Prom
          const idsCurso = cursosPrevios.map((c) => c.id)
          const paralelosPrevios = await tx.paralelo.findMany({
             where: { cursoId: { in: idsCurso } },
-            select: { id: true },
+            select: { id: true, codigo: true, asignaturaPlanId: true },
          })
          const idsParalelo = paralelosPrevios.map((p) => p.id)
          const sesionesPrevias = await tx.sesionParalelo.findMany({
@@ -974,6 +978,18 @@ export async function ejecutarCargaMasiva(ejecucion: EjecucionCargaMasiva): Prom
             select: { id: true },
          })
          const idsSesion = sesionesPrevias.map((s) => s.id)
+
+         // Las Ayudantías (Reserva.paraleloId) no se borran junto con el paralelo — la FK es
+         // ON DELETE SET NULL (ver migración agrega_paralelo_id_reserva), así que sobreviven
+         // pero quedan sin paralelo. Antes de borrar se guarda, por cada una, la identidad
+         // (asignaturaPlanId, código) del paralelo al que apuntaba — la misma clave que usa el
+         // análisis para agrupar filas del CSV en un paralelo (ver `clave` más abajo) — para
+         // poder reenlazarla al paralelo nuevo equivalente una vez recreado.
+         const claveParaleloPrevio = new Map(paralelosPrevios.map((p) => [p.id, `${p.asignaturaPlanId}|${p.codigo}`]))
+         const reservasAyudantiaPrevias = await tx.reserva.findMany({
+            where: { paraleloId: { in: idsParalelo } },
+            select: { id: true, paraleloId: true },
+         })
 
          const reservasBorradas = await tx.reserva.deleteMany({ where: { sesionParaleloId: { in: idsSesion } } })
          await tx.sesionParalelo.deleteMany({ where: { id: { in: idsSesion } } })
@@ -1019,6 +1035,34 @@ export async function ejecutarCargaMasiva(ejecucion: EjecucionCargaMasiva): Prom
             data: datosParalelos,
             select: { id: true },
          })
+
+         /* ── Reenlace de Ayudantías al paralelo nuevo equivalente ───────────
+            Mismo criterio de identidad que usó el análisis para agrupar el CSV en paralelos
+            (asignaturaPlanId + código): si el paralelo nuevo coincide con uno de los que se
+            acaban de borrar, las Ayudantías que apuntaban a ese paralelo se reenlazan acá. Las
+            que no encuentran equivalente (el paralelo salió del plan, cambió de código, etc.)
+            quedan como hoy: sin paralelo (`paraleloId` en null, por el ON DELETE SET NULL). */
+         const paraleloNuevoPorClave = new Map(
+            ejecucion.paralelos.map((paralelo, indice) => [
+               `${paralelo.asignaturaPlanId}|${paralelo.codigo}`,
+               paralelosCreados[indice]!.id,
+            ])
+         )
+         const idsPorParaleloNuevo = new Map<number, number[]>()
+         for (const reserva of reservasAyudantiaPrevias) {
+            const clave = claveParaleloPrevio.get(reserva.paraleloId!)
+            const paraleloNuevoId = clave ? paraleloNuevoPorClave.get(clave) : undefined
+            if (paraleloNuevoId == null) continue
+            idsPorParaleloNuevo.set(paraleloNuevoId, [...(idsPorParaleloNuevo.get(paraleloNuevoId) ?? []), reserva.id])
+         }
+         let reservasAyudantiaReasignadas = 0
+         for (const [paraleloNuevoId, idsReserva] of idsPorParaleloNuevo) {
+            const { count } = await tx.reserva.updateMany({
+               where: { id: { in: idsReserva } },
+               data: { paraleloId: paraleloNuevoId },
+            })
+            reservasAyudantiaReasignadas += count
+         }
 
          /* ── Sesiones ─────────────────────────────────────────────────────── */
          // `createManyAndReturn` sobre PostgreSQL devuelve las filas en el orden en que se
@@ -1096,6 +1140,7 @@ export async function ejecutarCargaMasiva(ejecucion: EjecucionCargaMasiva): Prom
             sesionesCreadas: sesionesCreadas.length,
             reservasCreadas: datosReservas.length,
             eliminados,
+            reservasAyudantiaReasignadas,
          }
       },
       { timeout: 300_000, maxWait: 30_000 }
