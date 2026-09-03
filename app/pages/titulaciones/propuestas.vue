@@ -467,10 +467,13 @@ async function eliminarPropuesta() {
                   </template>
                   <template #equipo-cell="{ row }">
                      <div v-if="row.original.modalidad === 'Tesina Feria de Software'" class="min-w-0">
-                        <p class="truncate text-usm-text dark:text-white">
+                        <p class="whitespace-normal wrap-break-word text-usm-text dark:text-white">
                            {{ row.original.estudiante.grupo?.nombre ?? '—' }}
                         </p>
-                        <p v-if="row.original.rol" class="truncate text-xs text-usm-text-muted dark:text-slate-400">
+                        <p
+                           v-if="row.original.rol"
+                           class="whitespace-normal wrap-break-word text-xs text-usm-text-muted dark:text-slate-400"
+                        >
                            {{ row.original.rol.nombre }}
                         </p>
                      </div>

@@ -148,6 +148,7 @@ const gruposNav: NavItem[][] = [
          children: [
             { to: '/titulaciones/propuestas', label: '1: Revisión de propuestas' },
             { to: '/titulaciones/asignacion-guia', label: '2: Asignación por equipo' },
+            { to: '/titulaciones/guiados', label: '3: Alumnos guiados' },
             { to: '/titulaciones/procesos', label: 'Procesos' },
             { to: '/titulaciones/estudiantes', label: 'Estudiantes' },
             { to: '/titulaciones/grupos', label: 'Grupos' },
@@ -251,6 +252,7 @@ const pageTitles: Record<string, string> = {
    '/titulaciones/profesores': 'Profesores',
    '/titulaciones/propuestas': 'Fase 1: Revisión de propuestas',
    '/titulaciones/asignacion-guia': 'Fase 2: Asignación por equipo',
+   '/titulaciones/guiados': 'Fase 3: Alumnos guiados',
    // No están en `navItems` (`/cuenta/contrasena` se llega por el botón del pie; `/cuenta/preferencias`
    // cuelga de su propio `UNavigationMenu`, aparte de `gruposNav`), así que también necesitan su
    // icono acá abajo, en `pageIcon`.

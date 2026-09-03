@@ -12,17 +12,19 @@ const { paginaActual, itemsPagina: procesosPagina, porPagina } = usePaginacion(c
 
 const columnas: TableColumn<TtProceso>[] = [
    { accessorKey: 'anio', header: 'Año' },
+   { id: 'mostrarGuiaEstudiantes', header: 'Guía visible para estudiantes', size: 100 },
    { id: 'acciones', header: '', size: 80 },
 ]
 
 /* ── Crear ───────────────────────────────────────────────── */
 const modalCrearMostrar = ref(false)
-const formCrear = reactive({ anio: new Date().getFullYear() })
+const formCrear = reactive({ anio: new Date().getFullYear(), mostrarGuiaEstudiantes: false })
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 
 function abrirCrear() {
    formCrear.anio = new Date().getFullYear()
+   formCrear.mostrarGuiaEstudiantes = false
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -33,7 +35,7 @@ async function guardar() {
    try {
       await $fetch('/api/titulaciones/procesos', {
          method: 'POST',
-         body: { anio: Number(formCrear.anio) },
+         body: { anio: Number(formCrear.anio), mostrarGuiaEstudiantes: formCrear.mostrarGuiaEstudiantes },
       })
       modalCrearMostrar.value = false
       await refresh()
@@ -48,12 +50,13 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const procesoEditar = ref<TtProceso | null>(null)
-const formEditar = reactive({ anio: new Date().getFullYear() })
+const formEditar = reactive({ anio: new Date().getFullYear(), mostrarGuiaEstudiantes: false })
 const errorEditar = ref<string | null>(null)
 
 function abrirEditar(proceso: TtProceso) {
    procesoEditar.value = proceso
    formEditar.anio = proceso.anio
+   formEditar.mostrarGuiaEstudiantes = proceso.mostrarGuiaEstudiantes
    errorEditar.value = null
    modalEditarMostrar.value = true
 }
@@ -64,7 +67,10 @@ async function guardarEditar() {
    errorEditar.value = null
    try {
       const url: string = `/api/titulaciones/procesos/${procesoEditar.value.id}`
-      await $fetch(url, { method: 'PATCH', body: { anio: Number(formEditar.anio) } })
+      await $fetch(url, {
+         method: 'PATCH',
+         body: { anio: Number(formEditar.anio), mostrarGuiaEstudiantes: formEditar.mostrarGuiaEstudiantes },
+      })
       modalEditarMostrar.value = false
       await refresh()
       toast.add({ title: 'Proceso actualizado', color: 'success', icon: 'i-lucide-check-circle' })
@@ -127,6 +133,10 @@ async function confirmarEliminar() {
             @action="abrirCrear"
          />
          <UTable v-else :data="procesosPagina" :columns="columnas">
+            <template #mostrarGuiaEstudiantes-cell="{ row }">
+               <UBadge v-if="row.original.mostrarGuiaEstudiantes" color="success" variant="subtle" size="sm">Sí</UBadge>
+               <UBadge v-else color="neutral" variant="subtle" size="sm">No</UBadge>
+            </template>
             <template #acciones-cell="{ row }">
                <div class="flex justify-end gap-1">
                   <UTooltip text="Editar">
@@ -174,6 +184,7 @@ async function confirmarEliminar() {
                      @update:model-value="formCrear.anio = Number($event)"
                   />
                </UFormField>
+               <USwitch v-model="formCrear.mostrarGuiaEstudiantes" label="Mostrar guía a los estudiantes" />
             </UForm>
          </template>
          <template #footer>
@@ -205,6 +216,7 @@ async function confirmarEliminar() {
                      @update:model-value="formEditar.anio = Number($event)"
                   />
                </UFormField>
+               <USwitch v-model="formEditar.mostrarGuiaEstudiantes" label="Mostrar guía a los estudiantes" />
             </UForm>
          </template>
          <template #footer>

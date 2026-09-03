@@ -26,6 +26,7 @@ export const crearTtProcesoSchema = z.object({
       .int('Debe ser un número entero')
       .min(2000, 'Debe ser 2000 o posterior')
       .max(2100, 'Máximo 2100'),
+   mostrarGuiaEstudiantes: z.boolean().optional().default(false),
 })
 
 // ============================================================
