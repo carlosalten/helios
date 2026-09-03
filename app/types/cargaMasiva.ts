@@ -29,5 +29,8 @@ export interface ResultadoCargaMasiva {
    sesionesCreadas: number
    reservasCreadas: number
    eliminados: { cursos: number; paralelos: number; sesiones: number; reservas: number }
+   // Reservas de Ayudantía que apuntaban a un paralelo borrado y se reenlazaron automáticamente
+   // al paralelo nuevo equivalente (mismo asignaturaPlanId + código) — ver ejecutarCargaMasiva.
+   reservasAyudantiaReasignadas: number
    advertencias: string[]
 }

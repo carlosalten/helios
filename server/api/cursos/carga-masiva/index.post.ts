@@ -1,6 +1,8 @@
 // Carga masiva del horario de un plan desde el CSV de programación académica. Borra el horario
-// que el plan tuviera en el semestre elegido (cursos, paralelos, sesiones y sus reservas) y lo
-// reconstruye desde el archivo. Ver server/utils/cargaMasiva.ts para el detalle del análisis.
+// que el plan tuviera en el semestre elegido (cursos, paralelos, sesiones y sus reservas de
+// Clase) y lo reconstruye desde el archivo. Las reservas de Ayudantía no se borran: se reenlazan
+// automáticamente al paralelo nuevo equivalente (mismo asignaturaPlanId + código de paralelo) —
+// ver el detalle en ejecutarCargaMasiva, dentro de server/utils/cargaMasiva.ts.
 export default defineEventHandler(async (event) => {
    const usuario = await requierePermiso(event, '/cursos/carga-masiva', 'crear')
 
