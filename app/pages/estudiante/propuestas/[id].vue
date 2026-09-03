@@ -28,6 +28,10 @@ function ultimoEstado(p: TtPropuestaConEstado) {
    return p.estados[0]?.estado ?? null
 }
 
+function guiaDe(p: TtPropuestaConEstado) {
+   return p.comision[0]?.profesor ?? null
+}
+
 function colorEstado(estado: string | null) {
    if (estado === 'Pendiente') return 'info'
    if (estado === 'Rechazada') return 'error'
@@ -126,6 +130,21 @@ async function onGuardado() {
             </div>
 
             <div class="mt-4 space-y-3">
+               <div v-if="catalogos?.mostrarGuia">
+                  <dt class="text-xs font-bold text-usm-text-muted dark:text-slate-400">Profesor guía</dt>
+                  <dd class="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                     <template v-if="guiaDe(propuesta)"
+                        ><UBadge color="info" variant="subtle"
+                           >{{ guiaDe(propuesta)!.nombre }} {{ guiaDe(propuesta)!.apellido }}</UBadge
+                        >
+                        <span class="text-usm-text-muted dark:text-slate-400">{{ guiaDe(propuesta)!.email }}</span
+                        ></template
+                     >
+                     <template v-else
+                        ><span class="text-usm-text dark:text-slate-200">Sin guía asignado</span></template
+                     >
+                  </dd>
+               </div>
                <div v-if="propuesta.lineaInvestigacion">
                   <dt class="text-xs font-medium text-usm-text-muted dark:text-slate-400">Línea de investigación</dt>
                   <dd class="text-sm text-usm-green font-semibold">{{ propuesta.lineaInvestigacion.nombre }}</dd>

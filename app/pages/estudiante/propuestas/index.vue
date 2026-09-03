@@ -14,6 +14,10 @@ function ultimoEstado(propuesta: TtPropuestaConEstado) {
    return propuesta.estados[0]?.estado ?? null
 }
 
+function guiaDe(propuesta: TtPropuestaConEstado) {
+   return propuesta.comision[0]?.profesor ?? null
+}
+
 function colorEstado(estado: string | null) {
    if (estado === 'Pendiente') return 'info'
    if (estado === 'Rechazada') return 'error'
@@ -89,14 +93,8 @@ async function onGuardado() {
                   Última actualización: {{ ultimaActualizacion }}
                </p>
                <UTooltip text="Actualizar">
-                  <UButton
-                     icon="i-lucide-refresh-cw"
-                     color="neutral"
-                     variant="ghost"
-                     size="xs"
-                     aria-label="Actualizar"
-                     @click="actualizarPagina"
-                  />
+                  <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="xs" aria-label="Actualizar"
+                     @click="actualizarPagina" />
                </UTooltip>
             </div>
             <UTooltip :text="puedeIngresar ? '' : 'Ya tienes una propuesta en proceso'">
@@ -120,28 +118,20 @@ async function onGuardado() {
          </dl>
       </div>
 
-      <EmptyState
-         v-if="!propuestas?.length"
-         icon="i-lucide-file-clock"
-         message="Todavía no has presentado ninguna propuesta."
-         action="Nueva propuesta"
-         @action="abrirNuevaPropuesta"
-      />
+      <EmptyState v-if="!propuestas?.length" icon="i-lucide-file-clock"
+         message="Todavía no has presentado ninguna propuesta." action="Nueva propuesta"
+         @action="abrirNuevaPropuesta" />
 
       <div v-else class="space-y-4">
-         <div
-            v-for="propuesta in propuestas"
-            :key="propuesta.id"
-            class="rounded-2xl border border-default bg-default p-4 sm:p-6"
-         >
+         <div v-for="propuesta in propuestas" :key="propuesta.id"
+            class="rounded-2xl border border-default bg-default p-4 sm:p-6">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                <div class="min-w-0">
                   <h3 class="font-semibold text-usm-text dark:text-white">{{ propuesta.titulo }}</h3>
                   <p class="mt-0.5 text-xs text-usm-text-muted dark:text-slate-400">
-                     {{ propuesta.modalidad }}<template v-if="propuesta.rol"> · {{ propuesta.rol.nombre }}</template
-                     ><template v-if="propuesta.lineaInvestigacion">
-                        · {{ propuesta.lineaInvestigacion.nombre }}</template
-                     >
+                     {{ propuesta.modalidad }}<template v-if="propuesta.rol"> · {{ propuesta.rol.nombre
+                        }}</template><template v-if="propuesta.lineaInvestigacion">
+                        · {{ propuesta.lineaInvestigacion.nombre }}</template>
                   </p>
                   <p class="mt-0.5 text-xs text-usm-text-muted dark:text-slate-400">
                      {{ fechaFormateada(propuesta.fecha) }}
@@ -152,16 +142,20 @@ async function onGuardado() {
                   </p>
                </div>
                <div class="flex shrink-0 flex-col items-end gap-2">
-                  <UBadge :color="colorEstado(ultimoEstado(propuesta))" variant="subtle">
-                     {{ ultimoEstado(propuesta) ?? 'Sin estado' }}
-                  </UBadge>
-                  <UButton
-                     :to="`/estudiante/propuestas/${propuesta.id}`"
-                     icon="i-lucide-file-text"
-                     color="neutral"
-                     variant="soft"
-                     size="xs"
-                  >
+                  <div class="flex flex-wrap items-center justify-end gap-2">
+                     <UBadge :color="colorEstado(ultimoEstado(propuesta))" variant="subtle">
+                        {{ ultimoEstado(propuesta) ?? 'Sin estado' }}
+                     </UBadge>
+                     <UBadge v-if="catalogos?.mostrarGuia" :color="guiaDe(propuesta) ? 'info' : 'neutral'" variant="subtle">
+                        {{
+                           guiaDe(propuesta)
+                              ? `Guía: ${guiaDe(propuesta)!.nombre} ${guiaDe(propuesta)!.apellido}`
+                              : 'Sin guía asignado'
+                        }}
+                     </UBadge>
+                  </div>
+                  <UButton :to="`/estudiante/propuestas/${propuesta.id}`" icon="i-lucide-file-text" color="neutral"
+                     variant="soft" size="xs">
                      Ver detalle
                   </UButton>
                </div>

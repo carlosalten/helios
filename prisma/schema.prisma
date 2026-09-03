@@ -570,6 +570,10 @@ model TtProceso {
   // "año" en el diagrama original; sin tilde acá por consistencia con el resto del schema
   // (identificadores en ASCII).
   anio Int
+  // Si se le muestra a los estudiantes de este proceso el profesor guía que tienen asignado en
+  // sus propuestas — toggle en /titulaciones/procesos, lo consume /estudiante/propuestas. Por
+  // defecto no se muestra: la jefatura decide cuándo anunciarlo.
+  mostrarGuiaEstudiantes Boolean @default(false) @map("mostrar_guia_estudiantes")
 
   estudiantes TtEstudiante[]
   grupos      TtGrupo[]

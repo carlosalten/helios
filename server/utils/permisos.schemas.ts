@@ -43,6 +43,7 @@ export const RUTAS_PERMISO = [
    '/titulaciones/asignacion-guia',
    '/titulaciones/estudiantes',
    '/titulaciones/grupos',
+   '/titulaciones/guiados',
    '/titulaciones/lineas-investigacion',
    '/titulaciones/procesos',
    '/titulaciones/profesores',

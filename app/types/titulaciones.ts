@@ -4,6 +4,9 @@
 export interface TtProceso {
    id: number
    anio: number
+   // Si se le muestra a los estudiantes de este proceso el profesor guía asignado en sus
+   // propuestas — toggle en /titulaciones/procesos, lo consume /estudiante/propuestas.
+   mostrarGuiaEstudiantes: boolean
 }
 
 export interface TtGrupo {
@@ -101,6 +104,18 @@ export interface TtProfesor {
 export const MODALIDADES_PROPUESTA = ['Investigación', 'Tesina Feria de Software', 'Proyecto Propio'] as const
 export type ModalidadPropuesta = (typeof MODALIDADES_PROPUESTA)[number]
 
+// Colores fijos por modalidad para las barras de carga por profesor (/titulaciones/asignacion-guia
+// y el panel "Cupos" de /titulaciones/guiados) — mismo mapeo en ambas pantallas para que el color
+// de una modalidad no cambie de significado según la página. Paleta categórica validada para CVD
+// y contraste en claro/oscuro (skill de dataviz): los tonos de marca (info/success/warning) ya los
+// usan los badges de estado en esas mismas páginas y no alcanzaban para 3 series distinguibles en
+// ambos modos.
+export const LEYENDA_COLOR_MODALIDAD: { modalidad: ModalidadPropuesta; etiqueta: string; clase: string }[] = [
+   { modalidad: 'Tesina Feria de Software', etiqueta: 'Feria de Software', clase: 'bg-[#2a78d6] dark:bg-[#3987e5]' },
+   { modalidad: 'Investigación', etiqueta: 'Investigación', clase: 'bg-[#eb6834] dark:bg-[#d95926]' },
+   { modalidad: 'Proyecto Propio', etiqueta: 'Proyecto propio', clase: 'bg-[#1baf7a] dark:bg-[#199e70]' },
+]
+
 export interface TtPropuesta {
    id: number
    titulo: string
@@ -119,10 +134,14 @@ export interface TtPropuesta {
    lineaInvestigacionId: number | null
 }
 
-// Respuesta de GET /api/estudiante/catalogos: catálogos para el formulario de nueva propuesta.
+// Respuesta de GET /api/estudiante/catalogos: catálogos para el formulario de nueva propuesta,
+// más el ajuste de visibilidad del guía del proceso del propio estudiante (ver
+// TtProceso.mostrarGuiaEstudiantes) — se aprovecha este fetch, que ya hacen ambas páginas de
+// /estudiante/propuestas, en vez de agregar uno nuevo solo para ese dato.
 export interface CatalogosPropuesta {
    roles: TtRol[]
    lineasInvestigacion: TtLineaInvestigacion[]
+   mostrarGuia: boolean
 }
 
 // Una transición en el historial de estados de una propuesta (ver TtEstado en schema.prisma).
@@ -143,6 +162,9 @@ export interface TtPropuestaConEstado extends TtPropuesta {
    rol: TtRol | null
    lineaInvestigacion: TtLineaInvestigacion | null
    estados: TtEstado[]
+   // A lo más un elemento con rol 'Guía' (ver el índice único parcial `tt_comision_propuesta_id_guia_key`
+   // en la BD) — sigue siendo un arreglo porque la relación de Prisma es de uno a muchos.
+   comision: { profesor: { email: string; nombre: string; apellido: string } }[]
 }
 
 // Forma que devuelve GET /api/titulaciones/propuestas (staff, todas las propuestas): igual que

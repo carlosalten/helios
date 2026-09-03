@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { LEYENDA_COLOR_MODALIDAD } from '~/types/titulaciones'
 import type {
    TtGrupoConIntegrantes,
    TtGrupoIntegrante,
@@ -239,12 +240,6 @@ const itemsTabs = computed(() => [
    { label: 'Proyecto propio', value: 'proyecto', badge: `${proyectoPropioPropuestas.value.length} postulaciones` },
 ])
 
-const etiquetaModalidadActiva = computed(() => {
-   if (tabActivo.value === 'feria') return 'equipo FESW'
-   if (tabActivo.value === 'investigacion') return 'Investigación'
-   return 'Proyecto Propio'
-})
-
 const resumenCarga = computed(() => {
    if (tabActivo.value === 'feria') {
       const estudiantesAsignados = equiposFeria.value.reduce(
@@ -269,19 +264,18 @@ const faltantes = computed(() => {
 })
 
 /* ── Carga por profesor ───────────────────────────────────────────────────── */
+// Siempre las 3 modalidades, sin importar el tab activo — a diferencia del resto de la página,
+// este panel es un resumen global. Colores en LEYENDA_COLOR_MODALIDAD (app/types/titulaciones.ts).
 const cargaPorProfesor = computed(() => {
-   const modalidadActiva =
-      tabActivo.value === 'feria'
-         ? 'Tesina Feria de Software'
-         : tabActivo.value === 'investigacion'
-           ? 'Investigación'
-           : 'Proyecto Propio'
    return (profesores.value ?? [])
       .filter((p) => p.esGuia)
       .map((profesor) => {
          const asignadas = propuestasAceptadas.value.filter((p) => guiaDe(p)?.email === profesor.email)
-         const deModalidadActiva = asignadas.filter((p) => p.modalidad === modalidadActiva).length
-         return { profesor, total: asignadas.length, deModalidadActiva, deOtras: asignadas.length - deModalidadActiva }
+         const porModalidad = LEYENDA_COLOR_MODALIDAD.map((m) => ({
+            ...m,
+            cantidad: asignadas.filter((p) => p.modalidad === m.modalidad).length,
+         }))
+         return { profesor, total: asignadas.length, porModalidad }
       })
       .sort((a, b) =>
          `${a.profesor.apellido} ${a.profesor.nombre}`.localeCompare(`${b.profesor.apellido} ${b.profesor.nombre}`)
@@ -702,8 +696,18 @@ async function confirmarDeshacer() {
          <!-- Panel: carga por profesor -->
          <div class="mt-6 lg:sticky lg:top-6 lg:mt-0">
             <div class="rounded-2xl border border-default bg-default p-4">
-               <h3 class="mb-1 font-semibold text-usm-text dark:text-white">Carga por profesor</h3>
-               <p class="mb-3 text-xs text-usm-text-muted dark:text-slate-400">{{ resumenCarga }}</p>
+               <h3 class="font-semibold text-usm-text dark:text-white">Carga por profesor</h3>
+               <p class="mt-0.5 mb-2 text-xs text-usm-text-muted dark:text-slate-400">{{ resumenCarga }}</p>
+               <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span
+                     v-for="m in LEYENDA_COLOR_MODALIDAD"
+                     :key="m.modalidad"
+                     class="flex items-center gap-1.5 text-xs text-usm-text-muted dark:text-slate-400"
+                  >
+                     <span class="size-2 shrink-0 rounded-full" :class="m.clase" />
+                     {{ m.etiqueta }}
+                  </span>
+               </div>
                <EmptyState
                   v-if="!cargaPorProfesor.length"
                   icon="i-lucide-graduation-cap"
@@ -719,19 +723,19 @@ async function confirmarDeshacer() {
                            {{ c.total }}/{{ c.profesor.cupoMaximo }}
                         </span>
                      </div>
-                     <div class="flex h-1.5 w-full overflow-hidden rounded-full bg-elevated">
+                     <div class="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full bg-elevated">
                         <div
-                           class="h-full bg-usm-blue dark:bg-usm-cyan"
-                           :style="{ width: `${Math.min(100, (c.deModalidadActiva / c.profesor.cupoMaximo) * 100)}%` }"
-                        />
-                        <div
-                           class="h-full bg-usm-text-muted/40"
-                           :style="{ width: `${Math.min(100, (c.deOtras / c.profesor.cupoMaximo) * 100)}%` }"
+                           v-for="m in c.porModalidad"
+                           :key="m.modalidad"
+                           class="h-full"
+                           :class="m.clase"
+                           :style="{ width: `${Math.min(100, (m.cantidad / c.profesor.cupoMaximo) * 100)}%` }"
                         />
                      </div>
                      <p class="mt-1 text-xs text-usm-text-muted dark:text-slate-400">
-                        {{ c.deModalidadActiva }} de {{ etiquetaModalidadActiva }} · {{ c.deOtras }} de otras
-                        modalidades
+                        <template v-for="(m, i) in c.porModalidad" :key="m.modalidad"
+                           >{{ i > 0 ? ' · ' : '' }}{{ m.cantidad }} {{ m.etiqueta }}</template
+                        >
                      </p>
                   </div>
                </div>
