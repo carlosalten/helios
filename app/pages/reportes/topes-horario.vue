@@ -1,15 +1,34 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'default' })
 
+// Horarios de los bloques del semestre vigente (14 diurnos + 6 vespertinos) — actualizar acá si
+// cambian entre semestres (ver /bloques-horarios). No se piden en vivo a /api/bloques a
+// propósito: este reporte procesa el archivo enteramente en el browser, sin sesión ni fetch.
 const HORARIOS_BLOQUES = [
-   '08:00–08:35', '08:35–09:10', '09:40–10:15', '10:15–10:50',
-   '11:05–11:40', '11:40–12:15', '12:30–13:05', '13:05–13:40',
-   '14:30–15:05', '15:05–15:40', '16:05–16:40', '16:40–17:15',
-   '17:30–18:05', '18:05–18:40',
+   '08:15–08:50',
+   '08:50–09:25',
+   '09:40–10:15',
+   '10:15–10:50',
+   '11:05–11:40',
+   '11:40–12:15',
+   '12:30–13:05',
+   '13:05–13:40',
+   '14:40–15:15',
+   '15:15–15:50',
+   '16:05–16:40',
+   '16:40–17:15',
+   '17:30–18:05',
+   '18:05–18:40',
+   '18:50–19:25',
+   '19:25–20:00',
+   '20:15–20:50',
+   '20:50–21:25',
+   '21:40–22:15',
+   '22:15–22:50',
 ] as const
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'] as const
-const CANT_BLOQUES = 14
+const CANT_BLOQUES = 20
 const CANT_DIAS = 5
 
 const COL_RUT = 0
@@ -109,7 +128,7 @@ async function calcular() {
                   apellidoMaterno: getDato(datos, COL_APELLIDO_MAT),
                },
                horario: Array.from({ length: CANT_BLOQUES }, () =>
-                  Array.from({ length: CANT_DIAS }, () => new Map<string, AsignaturaEnBloque>()),
+                  Array.from({ length: CANT_DIAS }, () => new Map<string, AsignaturaEnBloque>())
                ),
             })
          }
@@ -125,12 +144,12 @@ async function calcular() {
 
       for (const [, entrada] of horarioMap) {
          let cantTopes = 0
-         const horario: AsignaturaEnBloque[][][] = entrada.horario.map(fila =>
-            fila.map(celda => {
+         const horario: AsignaturaEnBloque[][][] = entrada.horario.map((fila) =>
+            fila.map((celda) => {
                const asigs = Array.from(celda.values())
                if (asigs.length >= 2) cantTopes++
                return asigs
-            }),
+            })
          )
 
          if (cantTopes > 0) {
@@ -193,14 +212,13 @@ const topesDelSeleccionado = computed(() => {
       <!-- Upload section -->
       <div class="overflow-hidden rounded-2xl border border-default bg-default p-6 mb-6">
          <div class="flex items-center gap-4 mb-6">
-            <div
-               class="w-12 h-12 rounded-xl bg-red-50 dark:bg-red-950 flex items-center justify-center shrink-0">
-               <UIcon name="i-heroicons-exclamation-triangle-16-solid"
-                  class="w-6 h-6 text-red-600 dark:text-red-400" />
+            <div class="w-12 h-12 rounded-xl bg-red-50 dark:bg-red-950 flex items-center justify-center shrink-0">
+               <UIcon name="i-heroicons-exclamation-triangle-16-solid" class="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
             <div>
-               <p class="text-usm-text-muted dark:text-slate-400 text-sm">Detección de conflictos de horario por
-                  estudiante</p>
+               <p class="text-usm-text-muted dark:text-slate-400 text-sm">
+                  Detección de conflictos de horario por estudiante
+               </p>
             </div>
          </div>
 
@@ -210,34 +228,53 @@ const topesDelSeleccionado = computed(() => {
                Archivo <span class="font-mono">Direst_050_*.csv</span> con carga horaria de todos los estudiantes
             </p>
             <div class="flex items-center justify-between mt-3 gap-2">
-               <span v-if="direstArchivo"
-                  class="text-xs text-usm-text-muted dark:text-slate-400 truncate font-mono min-w-0">
+               <span
+                  v-if="direstArchivo"
+                  class="text-xs text-usm-text-muted dark:text-slate-400 truncate font-mono min-w-0"
+               >
                   {{ direstArchivo.name }}
                </span>
                <span v-else />
                <input ref="inputDirest" type="file" accept=".csv" class="hidden" @change="seleccionarDirest" />
-               <UButton size="sm" color="primary" :variant="direstArchivo ? 'soft' : 'solid'"
+               <UButton
+                  size="sm"
+                  color="primary"
+                  :variant="direstArchivo ? 'soft' : 'solid'"
                   :icon="direstArchivo ? 'i-heroicons-check-16-solid' : 'i-heroicons-arrow-up-tray-16-solid'"
-                  :class="!direstArchivo ? 'text-white' : ''" class="shrink-0"
-                  @click="inputDirest?.click()">
+                  :class="!direstArchivo ? 'text-white' : ''"
+                  class="shrink-0"
+                  @click="inputDirest?.click()"
+               >
                   {{ direstArchivo ? 'Cambiar' : 'Seleccionar' }}
                </UButton>
             </div>
          </UCard>
 
-         <UAlert v-if="error" color="error" variant="soft" icon="i-heroicons-exclamation-circle-16-solid"
-            title="Sin resultados" :description="error" class="mb-4" />
+         <UAlert
+            v-if="error"
+            color="error"
+            variant="soft"
+            icon="i-heroicons-exclamation-circle-16-solid"
+            title="Sin resultados"
+            :description="error"
+            class="mb-4"
+         />
 
-         <UButton block size="lg" color="error" :disabled="!direstArchivo" :loading="cargando"
-            icon="i-heroicons-magnifying-glass-16-solid" @click="calcular">
+         <UButton
+            block
+            size="lg"
+            color="error"
+            :disabled="!direstArchivo"
+            :loading="cargando"
+            icon="i-heroicons-magnifying-glass-16-solid"
+            @click="calcular"
+         >
             Detectar topes de horario
          </UButton>
       </div>
 
       <!-- Results -->
-      <div v-if="estudiantesConTope.length > 0"
-         class="lg:grid lg:grid-cols-[360px_1fr] lg:gap-6 lg:items-start">
-
+      <div v-if="estudiantesConTope.length > 0" class="lg:grid lg:grid-cols-[360px_1fr] lg:gap-6 lg:items-start">
          <!-- Lista de estudiantes -->
          <div class="overflow-hidden rounded-2xl border border-default bg-default mb-6 lg:mb-0">
             <div class="px-4 py-3 border-b border-default flex items-center justify-between">
@@ -245,12 +282,17 @@ const topesDelSeleccionado = computed(() => {
                <UBadge :label="`${estudiantesConTope.length}`" color="error" variant="subtle" />
             </div>
             <ul class="divide-y divide-default overflow-y-auto max-h-[65vh]">
-               <li v-for="est in estudiantesConTope" :key="est.rut"
+               <li
+                  v-for="est in estudiantesConTope"
+                  :key="est.rut"
                   class="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer transition-colors"
-                  :class="estudianteSeleccionado?.rut === est.rut
-                     ? 'bg-red-50 dark:bg-red-950/30 border-l-2 border-red-500'
-                     : 'hover:bg-gray-50 dark:hover:bg-slate-800'"
-                  @click="estudianteSeleccionado = est">
+                  :class="
+                     estudianteSeleccionado?.rut === est.rut
+                        ? 'bg-red-50 dark:bg-red-950/30 border-l-2 border-red-500'
+                        : 'hover:bg-gray-50 dark:hover:bg-slate-800'
+                  "
+                  @click="estudianteSeleccionado = est"
+               >
                   <div class="min-w-0">
                      <p class="text-sm font-medium text-usm-text dark:text-slate-100 truncate">
                         {{ est.nombreCompleto }}
@@ -263,8 +305,10 @@ const topesDelSeleccionado = computed(() => {
          </div>
 
          <!-- Vista de horario -->
-         <div v-if="estudianteSeleccionado"
-            class="overflow-hidden rounded-2xl border border-default bg-default p-4 sm:p-5">
+         <div
+            v-if="estudianteSeleccionado"
+            class="overflow-hidden rounded-2xl border border-default bg-default p-4 sm:p-5"
+         >
             <div class="mb-4">
                <p class="font-semibold text-usm-text dark:text-slate-100">
                   {{ estudianteSeleccionado.nombreCompleto }}
@@ -278,12 +322,14 @@ const topesDelSeleccionado = computed(() => {
             <div class="flex flex-wrap gap-4 mb-4 text-xs text-usm-text-muted dark:text-slate-400">
                <div class="flex items-center gap-1.5">
                   <div
-                     class="w-3.5 h-3.5 rounded bg-usm-blue-50 dark:bg-usm-blue-950 border border-usm-blue-300 dark:border-usm-blue-800" />
+                     class="w-3.5 h-3.5 rounded bg-usm-blue-50 dark:bg-usm-blue-950 border border-usm-blue-300 dark:border-usm-blue-800"
+                  />
                   Con clase
                </div>
                <div class="flex items-center gap-1.5">
                   <div
-                     class="w-3.5 h-3.5 rounded bg-red-100 dark:bg-red-950 border border-red-300 dark:border-red-800" />
+                     class="w-3.5 h-3.5 rounded bg-red-100 dark:bg-red-950 border border-red-300 dark:border-red-800"
+                  />
                   Tope
                </div>
             </div>
@@ -293,44 +339,60 @@ const topesDelSeleccionado = computed(() => {
                <table class="w-full text-sm border-collapse">
                   <thead>
                      <tr class="bg-usm-blue text-white">
-                        <th
-                           class="px-3 py-2.5 text-left font-semibold text-xs uppercase tracking-wide w-28 shrink-0">
+                        <th class="px-3 py-2.5 text-left font-semibold text-xs uppercase tracking-wide w-28 shrink-0">
                            Bloque
                         </th>
-                        <th v-for="dia in DIAS_SEMANA" :key="dia"
-                           class="px-2 py-2.5 text-center font-semibold text-xs uppercase tracking-wide">
+                        <th
+                           v-for="dia in DIAS_SEMANA"
+                           :key="dia"
+                           class="px-2 py-2.5 text-center font-semibold text-xs uppercase tracking-wide"
+                        >
                            <span class="hidden sm:inline">{{ dia }}</span>
                            <span class="sm:hidden">{{ dia.slice(0, 3) }}</span>
                         </th>
                      </tr>
                   </thead>
                   <tbody>
-                     <tr v-for="b in CANT_BLOQUES" :key="b"
+                     <tr
+                        v-for="b in CANT_BLOQUES"
+                        :key="b"
                         class="border-t border-usm-border dark:border-slate-700"
-                        :class="b % 2 === 0 ? 'bg-usm-gray-50 dark:bg-slate-800/50' : 'bg-white dark:bg-slate-900'">
+                        :class="b % 2 === 0 ? 'bg-usm-gray-50 dark:bg-slate-800/50' : 'bg-white dark:bg-slate-900'"
+                     >
                         <td class="px-3 py-2 shrink-0">
                            <div class="font-semibold text-usm-text dark:text-slate-200 text-xs">Bloque {{ b }}</div>
-                           <div class="text-usm-text-muted dark:text-slate-400 text-xs font-mono mt-0.5 hidden sm:block">
+                           <div
+                              class="text-usm-text-muted dark:text-slate-400 text-xs font-mono mt-0.5 hidden sm:block"
+                           >
                               {{ HORARIOS_BLOQUES[b - 1] }}
                            </div>
                         </td>
                         <td v-for="(_, d) in DIAS_SEMANA" :key="d" class="px-1 py-1.5 text-center">
                            <UTooltip
-                              :text="asignaturasCelda(b - 1, d).map(a => a.display).join(' | ')"
-                              :disabled="!tieneClase(b - 1, d)">
+                              :text="
+                                 asignaturasCelda(b - 1, d)
+                                    .map((a) => a.display)
+                                    .join(' | ')
+                              "
+                              :disabled="!tieneClase(b - 1, d)"
+                           >
                               <div
                                  class="mx-auto w-full rounded-md py-1 px-0.5 min-h-7 flex items-center justify-center"
                                  :class="{
-                                    'bg-red-100 dark:bg-red-950 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300': esTope(b - 1, d),
-                                    'bg-usm-blue-50 dark:bg-usm-blue-950 border border-usm-blue-200 dark:border-usm-blue-800 text-usm-blue-700 dark:text-usm-blue-300': tieneClase(b - 1, d) && !esTope(b - 1, d),
+                                    'bg-red-100 dark:bg-red-950 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300':
+                                       esTope(b - 1, d),
+                                    'bg-usm-blue-50 dark:bg-usm-blue-950 border border-usm-blue-200 dark:border-usm-blue-800 text-usm-blue-700 dark:text-usm-blue-300':
+                                       tieneClase(b - 1, d) && !esTope(b - 1, d),
                                     'bg-transparent': !tieneClase(b - 1, d),
-                                 }">
-                                 <span v-if="esTope(b - 1, d)"
-                                    class="text-xs font-bold leading-none">
+                                 }"
+                              >
+                                 <span v-if="esTope(b - 1, d)" class="text-xs font-bold leading-none">
                                     ×{{ asignaturasCelda(b - 1, d).length }}
                                  </span>
-                                 <span v-else-if="tieneClase(b - 1, d)"
-                                    class="text-xs leading-none font-mono truncate max-w-full px-0.5">
+                                 <span
+                                    v-else-if="tieneClase(b - 1, d)"
+                                    class="text-xs leading-none font-mono truncate max-w-full px-0.5"
+                                 >
                                     {{ asignaturasCelda(b - 1, d)[0]?.sigla ?? '' }}
                                  </span>
                               </div>
@@ -344,20 +406,29 @@ const topesDelSeleccionado = computed(() => {
             <!-- Detalle de topes -->
             <div v-if="topesDelSeleccionado.length > 0" class="mt-5 space-y-2.5">
                <p class="text-sm font-semibold text-usm-text dark:text-slate-100">
-                  {{ topesDelSeleccionado.length }} tope{{ topesDelSeleccionado.length > 1 ? 's' : '' }} detectado{{ topesDelSeleccionado.length > 1 ? 's' : '' }}
+                  {{ topesDelSeleccionado.length }} tope{{ topesDelSeleccionado.length > 1 ? 's' : '' }} detectado{{
+                     topesDelSeleccionado.length > 1 ? 's' : ''
+                  }}
                </p>
-               <div v-for="tope in topesDelSeleccionado" :key="`${tope.diaIdx}-${tope.bloque}`"
-                  class="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3">
+               <div
+                  v-for="tope in topesDelSeleccionado"
+                  :key="`${tope.diaIdx}-${tope.bloque}`"
+                  class="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3"
+               >
                   <p class="text-xs font-semibold text-red-700 dark:text-red-400 mb-1.5">
                      {{ tope.dia }} — Bloque {{ tope.bloque }}
                      <span class="font-mono font-normal">({{ HORARIOS_BLOQUES[tope.bloque - 1] }})</span>
                   </p>
                   <ul class="space-y-0.5">
-                     <li v-for="asig in tope.asignaturas" :key="asig.sigla + asig.paralelo"
-                        class="text-xs text-usm-text dark:text-slate-200">
+                     <li
+                        v-for="asig in tope.asignaturas"
+                        :key="asig.sigla + asig.paralelo"
+                        class="text-xs text-usm-text dark:text-slate-200"
+                     >
                         <span class="font-mono font-semibold">{{ asig.sigla }}</span>
-                        <span class="text-usm-text-muted dark:text-slate-400"> ({{ asig.paralelo }}) — {{
-                           asig.nombre }}</span>
+                        <span class="text-usm-text-muted dark:text-slate-400">
+                           ({{ asig.paralelo }}) — {{ asig.nombre }}</span
+                        >
                      </li>
                   </ul>
                </div>
