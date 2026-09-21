@@ -13,8 +13,10 @@ import type { DateRange } from 'reka-ui'
 // Vista de laboratorios modelada sobre app/pages/reservas/horario.vue (misma grilla de 5
 // minutos, misma navegación por semana, mismo patrón de edición/borrado "esta reserva" vs
 // "esta y las siguientes"), pero acotada a un único propósito: agendar Ayudantías. A
-// diferencia de esa página, acá no hay tipo/título libres, no hay reservas de una sola
-// ocurrencia (siempre recurrentes hasta fin de semestre) y no hay drag&drop/copiar-pegar.
+// diferencia de esa página, acá no hay tipo/título libres y no hay drag&drop/copiar-pegar. Al
+// crear, se elige la frecuencia (ver formCrear.frecuencia): una sola sesión (POST /api/reservas,
+// sin serieId) o recurrente cada semana hasta el fin del semestre vigente (POST
+// /api/reservas/recurrente, comportamiento histórico y default).
 const toast = useToast()
 const { user } = useUserSession()
 
@@ -427,8 +429,10 @@ function terminaEnMediaHora(diaValor: number, franjaIndice: number) {
    const franjaFinal = franjas.value[franjaIndice + span - 1]
    return franjaFinal ? esLimiteMediaHora(franjaFinal.horaFin) : false
 }
+// El color depende solo del período (mañana/tarde/vespertino) — sábado y domingo ya se
+// distinguen con el encabezado de columna en gris (ver DIAS_FIN_SEMANA más abajo en el
+// template), así que la celda no debe perder el color de período por ser fin de semana.
 function claseCeldaDia(diaValor: number, franja: Franja) {
-   if (DIAS_FIN_SEMANA.includes(diaValor)) return 'bg-gray-50 dark:bg-slate-800/40'
    if (franja.periodo === 'vespertino') return 'bg-secondary/10 dark:bg-secondary/15'
    if (franja.periodo === 'tarde') return 'bg-muted'
    return 'bg-default'
@@ -485,7 +489,11 @@ const formCrear = reactive({
    paraleloId: undefined as number | undefined,
    personaId: 0,
    fecha: '',
-   modoHorario: 'libre' as 'bloque' | 'libre',
+   // 'semestre' = comportamiento histórico (recurrente cada semana hasta el fin del semestre
+   // vigente); 'una' crea una única Reserva suelta (sin serieId) vía POST /api/reservas en vez
+   // de /api/reservas/recurrente.
+   frecuencia: 'semestre' as 'una' | 'semestre',
+   modoHorario: 'bloque' as 'bloque' | 'libre',
    bloqueInicioId: undefined as number | undefined,
    bloqueTerminoId: undefined as number | undefined,
    inicio: '',
@@ -535,16 +543,31 @@ function abrirCrear(diaValor: number, franja: Franja) {
 
    const ultimaFranja = franjas.value[franjas.value.length - 1]
    const finMaximo = ultimaFranja ? horaAMinutos(ultimaFranja.horaFin) : horaAMinutos(franja.horaFin)
-   const finSugerido = Math.min(horaAMinutos(franja.horaInicio) + 30, finMaximo)
+   const finSugerido = Math.min(horaAMinutos(franja.horaInicio) + 35, finMaximo)
+
+   // Por defecto "Por bloque": se precarga el bloque que CONTIENE la celda clickeada (no solo
+   // el que empieza justo ahí — un click a mitad de un bloque debe seguir cayendo en ese
+   // bloque), y como término el bloque siguiente (si no hay uno después, p. ej. se clickeó el
+   // último bloque del día, se deja el mismo como término).
+   const minutoClick = horaAMinutos(franja.horaInicio)
+   const bloqueClickeado = bloquesSemestre.value.find((b) => {
+      const inicioMin = horaAMinutos(horaDeISO(b.inicio))
+      const finMin = horaAMinutos(horaDeISO(b.fin))
+      return minutoClick >= inicioMin && minutoClick < finMin
+   })
+   const bloqueSiguiente = bloqueClickeado
+      ? bloquesSemestre.value.find((b) => b.numero === bloqueClickeado.numero + 1)
+      : undefined
 
    formCrear.carreraCodigo = undefined
    formCrear.asignaturaId = undefined
    formCrear.paraleloId = undefined
    formCrear.personaId = ayudantes.value[0]?.id ?? 0
    formCrear.fecha = formatFechaISO(fecha)
-   formCrear.modoHorario = 'libre'
-   formCrear.bloqueInicioId = undefined
-   formCrear.bloqueTerminoId = undefined
+   formCrear.frecuencia = 'semestre'
+   formCrear.modoHorario = 'bloque'
+   formCrear.bloqueInicioId = bloqueClickeado?.id
+   formCrear.bloqueTerminoId = (bloqueSiguiente ?? bloqueClickeado)?.id
    formCrear.inicio = franja.horaInicio
    formCrear.fin = minutosAHora(finSugerido)
    errorGuardar.value = null
@@ -554,10 +577,36 @@ function abrirCrear(diaValor: number, franja: Franja) {
 const bloqueInicioSel = computed(() => bloquesSemestre.value.find((b) => b.id === formCrear.bloqueInicioId) ?? null)
 const bloqueTerminoSel = computed(() => bloquesSemestre.value.find((b) => b.id === formCrear.bloqueTerminoId) ?? null)
 
+// El fin debe ser estrictamente posterior al inicio, en ambos modos (bloque/libre) — mismo
+// criterio que crearReservaSchema en el backend (constraint `reserva_fin_mayor_inicio` en BD,
+// ver CLAUDE.md raíz). Se valida acá también para dar feedback inmediato sin esperar al submit;
+// compartida entre crear y editar (ver horarioInvalidoEditar más abajo).
+const HORA_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
+function horarioInvalido(
+   modoHorario: 'bloque' | 'libre',
+   bloqueInicio: Bloque | null,
+   bloqueTermino: Bloque | null,
+   inicio: string,
+   fin: string
+) {
+   if (modoHorario === 'bloque') {
+      if (!bloqueInicio || !bloqueTermino) return false
+      return horaAMinutos(horaDeISO(bloqueTermino.fin)) <= horaAMinutos(horaDeISO(bloqueInicio.inicio))
+   }
+   if (!HORA_REGEX.test(inicio) || !HORA_REGEX.test(fin)) return false
+   return horaAMinutos(fin) <= horaAMinutos(inicio)
+}
+const MENSAJE_HORARIO_INVALIDO = 'Debe ser posterior al de inicio'
+
+const horarioInvalidoCrear = computed(() =>
+   horarioInvalido(formCrear.modoHorario, bloqueInicioSel.value, bloqueTerminoSel.value, formCrear.inicio, formCrear.fin)
+)
+
 const puedeEnviarCrear = computed(() => {
    if (guardando.value) return false
    if (!formCrear.carreraCodigo || !formCrear.asignaturaId || !formCrear.paraleloId) return false
    if (!formCrear.personaId || !formCrear.fecha) return false
+   if (horarioInvalidoCrear.value) return false
    if (formCrear.modoHorario === 'bloque') return !!bloqueInicioSel.value && !!bloqueTerminoSel.value
    return !!formCrear.inicio && !!formCrear.fin
 })
@@ -576,29 +625,39 @@ async function guardar() {
    guardando.value = true
    errorGuardar.value = null
    try {
-      const resultado = await $fetch<{ ok: true; cantidad: number }>('/api/reservas/recurrente', {
-         method: 'POST',
-         body: {
-            salaCodigo: salaSeleccionada.value,
-            titulo: `${asignatura.codigo}-${paralelo.codigo}`,
-            subtitulo: asignatura.nombreCorto ?? asignatura.nombre,
-            paraleloId: paralelo.id,
-            fecha: formCrear.fecha,
-            repetirHasta: semestreVigente.value.fechaFin.slice(0, 10),
-            inicio,
-            fin,
-            tipoReservaId: tipoAyudantia.value.id,
-            personaId: Number(formCrear.personaId),
-            publica: tipoAyudantia.value.publicaPorDefecto,
-         },
-      })
-      modalCrearMostrar.value = false
-      await refrescarReservas()
-      toast.add({
-         title: `${resultado.cantidad} ayudantías creadas`,
-         color: 'success',
-         icon: 'i-lucide-check-circle',
-      })
+      const bodyComun = {
+         salaCodigo: salaSeleccionada.value,
+         titulo: `${asignatura.codigo}-${paralelo.codigo}`,
+         subtitulo: asignatura.nombreCorto ?? asignatura.nombre,
+         paraleloId: paralelo.id,
+         inicio,
+         fin,
+         tipoReservaId: tipoAyudantia.value.id,
+         personaId: Number(formCrear.personaId),
+         publica: tipoAyudantia.value.publicaPorDefecto,
+      }
+      if (formCrear.frecuencia === 'una') {
+         await $fetch('/api/reservas', { method: 'POST', body: { ...bodyComun, fecha: formCrear.fecha } })
+         modalCrearMostrar.value = false
+         await refrescarReservas()
+         toast.add({ title: 'Ayudantía creada', color: 'success', icon: 'i-lucide-check-circle' })
+      } else {
+         const resultado = await $fetch<{ ok: true; cantidad: number }>('/api/reservas/recurrente', {
+            method: 'POST',
+            body: {
+               ...bodyComun,
+               fecha: formCrear.fecha,
+               repetirHasta: semestreVigente.value.fechaFin.slice(0, 10),
+            },
+         })
+         modalCrearMostrar.value = false
+         await refrescarReservas()
+         toast.add({
+            title: `${resultado.cantidad} ayudantías creadas`,
+            color: 'success',
+            icon: 'i-lucide-check-circle',
+         })
+      }
    } catch (e: unknown) {
       errorGuardar.value = (e as { data?: { message?: string } }).data?.message ?? 'Error al guardar'
    } finally {
@@ -698,8 +757,19 @@ const bloqueTerminoSelEditar = computed(
    () => bloquesSemestre.value.find((b) => b.id === formEditar.bloqueTerminoId) ?? null
 )
 
+const horarioInvalidoEditar = computed(() =>
+   horarioInvalido(
+      formEditar.modoHorario,
+      bloqueInicioSelEditar.value,
+      bloqueTerminoSelEditar.value,
+      formEditar.inicio,
+      formEditar.fin
+   )
+)
+
 const puedeEnviarEditar = computed(() => {
    if (guardando.value || !formEditar.personaId) return false
+   if (horarioInvalidoEditar.value) return false
    if (formEditar.modoHorario === 'bloque') return !!bloqueInicioSelEditar.value && !!bloqueTerminoSelEditar.value
    return !!formEditar.inicio && !!formEditar.fin
 })
@@ -756,8 +826,8 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
    <div class="space-y-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
          <p class="text-sm text-usm-text-muted dark:text-slate-400">
-            Horario de ayudantías por laboratorio. Haz click en una celda vacía para agendar una — queda recurrente cada
-            semana hasta el fin del semestre vigente.
+            Horario de ayudantías por laboratorio. Haz click en una celda vacía para agendar una — sola o recurrente
+            cada semana hasta el fin del semestre vigente.
          </p>
          <USwitch
             v-if="bloquesSemestre.length"
@@ -1048,12 +1118,26 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                      class="w-full"
                   />
                </UFormField>
-               <UFormField label="Fecha de la primera ayudantía" name="fecha">
+               <UFormField label="Repetición">
+                  <UTabs
+                     v-model="formCrear.frecuencia"
+                     :items="[
+                        { label: 'Solo esta sesión', value: 'una' },
+                        { label: 'Todo el semestre', value: 'semestre' },
+                     ]"
+                     :content="false"
+                  />
+               </UFormField>
+               <UFormField :label="formCrear.frecuencia === 'semestre' ? 'Fecha de la primera ayudantía' : 'Fecha'" name="fecha">
                   <UInput v-model="formCrear.fecha" type="date" class="w-full" />
                </UFormField>
                <UFormField
                   label="Horario"
-                  description="Se repite todas las semanas a esta misma hora hasta el fin del semestre vigente."
+                  :description="
+                     formCrear.frecuencia === 'semestre'
+                        ? 'Se repite todas las semanas a esta misma hora hasta el fin del semestre vigente.'
+                        : undefined
+                  "
                >
                   <UTabs
                      v-model="formCrear.modoHorario"
@@ -1073,7 +1157,11 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                         class="w-full"
                      />
                   </UFormField>
-                  <UFormField label="Bloque de término" name="bloqueTerminoId">
+                  <UFormField
+                     label="Bloque de término"
+                     name="bloqueTerminoId"
+                     :error="horarioInvalidoCrear ? MENSAJE_HORARIO_INVALIDO : undefined"
+                  >
                      <USelectMenu
                         v-model="formCrear.bloqueTerminoId"
                         :items="itemsBloque"
@@ -1093,7 +1181,11 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                         @update:model-value="formCrear.inicio = enmascararHora(String($event))"
                      />
                   </UFormField>
-                  <UFormField label="Hora de término" name="fin">
+                  <UFormField
+                     label="Hora de término"
+                     name="fin"
+                     :error="horarioInvalidoCrear ? MENSAJE_HORARIO_INVALIDO : undefined"
+                  >
                      <UInput
                         :model-value="formCrear.fin"
                         placeholder="15:00"
@@ -1155,6 +1247,9 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                   </p>
                   <p v-if="reservaSeleccionada.subtitulo" class="text-usm-text-muted dark:text-slate-400">
                      {{ reservaSeleccionada.subtitulo }}
+                  </p>
+                  <p v-if="reservaSeleccionada.paralelo" class="text-usm-text-muted dark:text-slate-400">
+                     {{ reservaSeleccionada.paralelo.asignaturaPlan.plan.carrera.nombre }}
                   </p>
                </div>
                <div class="flex items-start justify-between gap-3">
@@ -1282,6 +1377,9 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                   <p v-if="reservaEditar.subtitulo" class="text-sm text-usm-text-muted dark:text-slate-400">
                      {{ reservaEditar.subtitulo }}
                   </p>
+                  <p v-if="reservaEditar.paralelo" class="text-sm text-usm-text-muted dark:text-slate-400">
+                     {{ reservaEditar.paralelo.asignaturaPlan.plan.carrera.nombre }}
+                  </p>
                </div>
                <UFormField label="Ayudante" name="personaId">
                   <USelectMenu
@@ -1311,7 +1409,11 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                         class="w-full"
                      />
                   </UFormField>
-                  <UFormField label="Bloque de término" name="bloqueTerminoId">
+                  <UFormField
+                     label="Bloque de término"
+                     name="bloqueTerminoId"
+                     :error="horarioInvalidoEditar ? MENSAJE_HORARIO_INVALIDO : undefined"
+                  >
                      <USelectMenu
                         v-model="formEditar.bloqueTerminoId"
                         :items="itemsBloque"
@@ -1331,7 +1433,11 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                         @update:model-value="formEditar.inicio = enmascararHora(String($event))"
                      />
                   </UFormField>
-                  <UFormField label="Hora de término" name="fin">
+                  <UFormField
+                     label="Hora de término"
+                     name="fin"
+                     :error="horarioInvalidoEditar ? MENSAJE_HORARIO_INVALIDO : undefined"
+                  >
                      <UInput
                         :model-value="formEditar.fin"
                         placeholder="15:00"

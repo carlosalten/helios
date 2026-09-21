@@ -295,8 +295,12 @@ export default defineEventHandler(async (event) => {
             fin: true,
             salaCodigo: true,
             titulo: true,
+            subtitulo: true,
             tipoReserva: { select: { nombre: true, color: true } },
             persona: { select: { nombre: true, apellido: true } },
+            paralelo: {
+               select: { asignaturaPlan: { select: { plan: { select: { carrera: { select: { nombreCorto: true } } } } } } },
+            },
          },
          orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
          take: 6,
@@ -362,6 +366,72 @@ export default defineEventHandler(async (event) => {
    const claveClaseFisica = (s: (typeof sesiones)[number], bloqueId: number) =>
       `${s.paralelo.asignaturaPlan.asignaturaId}-${s.paralelo.codigo}-${s.diaSemana}-${bloqueId}`
 
+   // Cuenta clases físicas (deduplicando paralelo espejo Y bloques contiguos de una misma clase
+   // de varias horas, igual que calcularIndicadoresHoy más abajo) y cuántas de esas clases
+   // tienen sala y profesor asignado — para "Estado de la planificación" (global y por carrera).
+   // Antes esto se contaba con claveClaseFisica directo (una entrada por bloque), así que una
+   // clase de 3 bloques contaba como 3 clases. Una clase cuenta "con sala"/"con profesor" solo
+   // si TODOS sus bloques lo tienen: sala asignada solo en el bloque de teoría pero no en el de
+   // práctica sigue siendo una clase incompleta.
+   function contarClasesFisicas(
+      lista: {
+         salaCodigo: string | null
+         profesorId: number | null
+         diaSemana: number
+         bloques: { bloqueId: number }[]
+         paralelo: SesionParaIndicador
+      }[]
+   ) {
+      const porClaveDia = new Map<string, Map<number, { sala: boolean; profesor: boolean }>>()
+      for (const sesion of lista) {
+         const claveDia = `${sesion.paralelo.asignaturaPlan.asignaturaId}-${sesion.paralelo.codigo}-${sesion.diaSemana}`
+         const porBloque = porClaveDia.get(claveDia) ?? new Map<number, { sala: boolean; profesor: boolean }>()
+         for (const { bloqueId } of sesion.bloques) {
+            const flags = porBloque.get(bloqueId) ?? { sala: false, profesor: false }
+            if (sesion.salaCodigo) flags.sala = true
+            if (sesion.profesorId) flags.profesor = true
+            porBloque.set(bloqueId, flags)
+         }
+         porClaveDia.set(claveDia, porBloque)
+      }
+
+      let total = 0
+      let conSala = 0
+      let conProfesor = 0
+      for (const porBloque of porClaveDia.values()) {
+         const ordenados = [...porBloque.entries()]
+            .map(([bloqueId, flags]) => ({ bloque: bloquePorId.get(bloqueId), flags }))
+            .filter(
+               (x): x is { bloque: (typeof bloques)[number]; flags: { sala: boolean; profesor: boolean } } => !!x.bloque
+            )
+            .sort((a, b) => a.bloque.inicio.getTime() - b.bloque.inicio.getTime())
+
+         let finAnterior: number | null = null
+         let tramoSala = true
+         let tramoProfesor = true
+         let enTramo = false
+         const cerrarTramo = () => {
+            if (!enTramo) return
+            total++
+            if (tramoSala) conSala++
+            if (tramoProfesor) conProfesor++
+         }
+         for (const { bloque, flags } of ordenados) {
+            if (finAnterior === null || bloque.inicio.getTime() !== finAnterior) {
+               cerrarTramo()
+               tramoSala = true
+               tramoProfesor = true
+               enTramo = true
+            }
+            tramoSala = tramoSala && flags.sala
+            tramoProfesor = tramoProfesor && flags.profesor
+            finAnterior = bloque.fin.getTime()
+         }
+         cerrarTramo()
+      }
+      return { total, conSala, conProfesor }
+   }
+
    // Clases, cursos y profesores con clase hoy, sobre una lista de sesiones ya acotada (por sala
    // o por carrera, según el rol — ver más abajo). Además de deduplicar por paralelo espejo, los
    // bloques contiguos del mismo paralelo (una clase de varias horas) son una sola clase — se
@@ -399,18 +469,11 @@ export default defineEventHandler(async (event) => {
 
    /* ── Estado de la planificación ────────────────────────────────────────
       Los conteos van sobre clases físicas (deduplicadas), no sobre filas `SesionParalelo`: si
-      no, un paralelo espejo contaría doble su falta de sala o de profesor. */
-   const clasesConSala = new Set<string>()
-   const clasesConProfesor = new Set<string>()
-   const clasesTotales = new Set<string>()
-   for (const sesion of sesiones) {
-      for (const { bloqueId } of sesion.bloques) {
-         const clave = claveClaseFisica(sesion, bloqueId)
-         clasesTotales.add(clave)
-         if (sesion.salaCodigo) clasesConSala.add(clave)
-         if (sesion.profesorId) clasesConProfesor.add(clave)
-      }
-   }
+      no, un paralelo espejo contaría doble su falta de sala o de profesor, y una clase de
+      varios bloques contaría una vez por bloque en vez de una sola vez (ver
+      contarClasesFisicas). */
+   const { total: clasesTotalesCount, conSala: clasesConSalaCount, conProfesor: clasesConProfesorCount } =
+      contarClasesFisicas(sesiones)
 
    // Horas cubiertas por paralelo: una asignatura pide N bloques de teoría y M de práctica.
    const sesionesPorParalelo = new Map<
@@ -490,18 +553,9 @@ export default defineEventHandler(async (event) => {
       va en `planificacion`. */
    const misCarreras = esPersonal
       ? carrerasDelAlcance.map((carrera) => {
-           const clases = new Set<string>()
-           const conSala = new Set<string>()
-           const conProfesor = new Set<string>()
-           for (const sesion of sesiones) {
-              if (sesion.paralelo.asignaturaPlan.plan.carreraCodigo !== carrera.codigo) continue
-              for (const { bloqueId } of sesion.bloques) {
-                 const clave = claveClaseFisica(sesion, bloqueId)
-                 clases.add(clave)
-                 if (sesion.salaCodigo) conSala.add(clave)
-                 if (sesion.profesorId) conProfesor.add(clave)
-              }
-           }
+           const { total, conSala, conProfesor } = contarClasesFisicas(
+              sesiones.filter((sesion) => sesion.paralelo.asignaturaPlan.plan.carreraCodigo === carrera.codigo)
+           )
            return {
               codigo: carrera.codigo,
               nombre: carrera.nombre,
@@ -509,9 +563,9 @@ export default defineEventHandler(async (event) => {
               esJefe: alcance.carrerasQueDirige.includes(carrera.codigo),
               cursos: cursosDelAlcance.filter((c) => c.plan.carreraCodigo === carrera.codigo).length,
               paralelos: paralelosDelAlcance.filter((p) => p.curso.plan.carreraCodigo === carrera.codigo).length,
-              clasesTotales: clases.size,
-              clasesConSala: conSala.size,
-              clasesConProfesor: conProfesor.size,
+              clasesTotales: total,
+              clasesConSala: conSala,
+              clasesConProfesor: conProfesor,
            }
         })
       : []
@@ -526,21 +580,33 @@ export default defineEventHandler(async (event) => {
    const misSalas = esPersonal
       ? salas.map((sala) => {
            const reservasDeLaSala = reservasHoy.filter((r) => r.salaCodigo === sala.codigo)
-           const bloquesOcupados = new Set<number>()
+           // Un bloque puede solaparse con más de una reserva (la app lo permite a propósito —
+           // ver CLAUDE.md raíz), así que se le asigna el tipo de la primera que lo cubre
+           // (reservasHoy ya viene ordenada por `inicio`), no se cuenta más de una vez.
+           const tipoPorBloque = new Map<number, { nombre: string; color: string }>()
            for (const reserva of reservasDeLaSala) {
               for (const bloque of bloques) {
-                 if (bloque.inicio < reserva.fin && bloque.fin > reserva.inicio) bloquesOcupados.add(bloque.id)
+                 if (bloque.inicio < reserva.fin && bloque.fin > reserva.inicio && !tipoPorBloque.has(bloque.id)) {
+                    tipoPorBloque.set(bloque.id, reserva.tipoReserva)
+                 }
               }
+           }
+           const porTipo = new Map<string, { nombre: string; color: string; ocupados: number }>()
+           for (const tipo of tipoPorBloque.values()) {
+              const actual = porTipo.get(tipo.nombre) ?? { ...tipo, ocupados: 0 }
+              actual.ocupados++
+              porTipo.set(tipo.nombre, actual)
            }
            const { clases, reservas } = contarEventosSala(reservasDeLaSala)
            return {
               codigo: sala.codigo,
               tipoSala: sala.tipoSala.nombre,
               capacidad: sala.capacidad,
-              ocupadosHoy: bloquesOcupados.size,
+              ocupadosHoy: tipoPorBloque.size,
               totalBloques: bloques.length,
               clasesHoy: clases,
               reservasHoy: reservas,
+              ocupacionPorTipo: [...porTipo.values()].sort((a, b) => b.ocupados - a.ocupados),
            }
         })
       : []
@@ -598,8 +664,10 @@ export default defineEventHandler(async (event) => {
          fin: aHora(reserva.fin),
          salaCodigo: reserva.salaCodigo,
          titulo: reserva.titulo,
+         asignatura: reserva.subtitulo,
          tipo: reserva.tipoReserva.nombre,
          color: reserva.tipoReserva.color,
+         carrera: reserva.paralelo?.asignaturaPlan.plan.carrera.nombreCorto ?? null,
          // Nulo si la reserva no tiene responsable designado.
          responsable: reserva.persona ? `${reserva.persona.nombre} ${reserva.persona.apellido}` : null,
          enCurso: estaEnCurso(fecha, inicio),
@@ -755,9 +823,9 @@ export default defineEventHandler(async (event) => {
          personasActivas,
       },
       planificacion: {
-         clasesTotales: clasesTotales.size,
-         clasesConSala: clasesConSala.size,
-         clasesConProfesor: clasesConProfesor.size,
+         clasesTotales: clasesTotalesCount,
+         clasesConSala: clasesConSalaCount,
+         clasesConProfesor: clasesConProfesorCount,
          // El total de paralelos va en `totales`: es el mismo número y sirve de denominador.
          paralelosCompletos,
          topesSala,

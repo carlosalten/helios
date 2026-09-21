@@ -55,6 +55,10 @@ export interface SalaResumen {
    totalBloques: number
    clasesHoy: number
    reservasHoy: number
+   // Desglose de `ocupadosHoy` por tipo de reserva (color = TipoReserva.color), para pintar la
+   // barra de ocupación en segmentos — de mayor a menor cantidad. Un bloque tomado por más de
+   // una reserva (la app permite solapamiento) cuenta una sola vez, en el tipo de la primera.
+   ocupacionPorTipo: { nombre: string; color: string; ocupados: number }[]
 }
 
 // Una clase que viene en alguna de las salas a cargo del usuario. Se calcula sobre las
@@ -84,8 +88,14 @@ export interface ReservaProxima {
    fin: string
    salaCodigo: string
    titulo: string
+   // Nombre de la asignatura: solo lo tienen las Ayudantías (Reserva.subtitulo, ver
+   // /ayudantias) — nulo en cualquier otro tipo de reserva.
+   asignatura: string | null
    tipo: string
    color: string | null
+   // Nombre corto de la carrera: solo la tienen las Ayudantías (Reserva.paraleloId, ver
+   // /ayudantias) — nulo en cualquier otro tipo de reserva.
+   carrera: string | null
    // Nulo si la reserva no tiene responsable designado.
    responsable: string | null
    enCurso: boolean

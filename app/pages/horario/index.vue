@@ -546,9 +546,11 @@ function usados(paraleloId: number, tipo: TipoSesion) {
    return sesionesDelCurso.value.filter((s) => s.paraleloId === paraleloId && s.tipo === tipo).length
 }
 
+// El color depende solo de si el bloque está protegido y de la jornada — sábado y domingo ya
+// se distinguen con el encabezado de columna en gris, así que la celda no debe perder el color
+// de jornada (p. ej. vespertina) por ser fin de semana.
 function claseCelda(diaSemana: number, bloque: Bloque) {
    if (estaProtegido(diaSemana, bloque)) return 'bg-gray-200/70 dark:bg-slate-700/40'
-   if (DIAS_FIN_SEMANA.includes(diaSemana)) return 'bg-gray-50 dark:bg-slate-800/40'
    if (bloque.jornada === 'VESPERTINA') return 'bg-usm-purple/5 dark:bg-usm-purple/15'
    return 'bg-default'
 }
