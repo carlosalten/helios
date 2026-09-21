@@ -476,10 +476,10 @@ function terminaEnMediaHora(diaValor: number, franjaIndice: number) {
    return franjaFinal ? esLimiteMediaHora(franjaFinal.horaFin) : false
 }
 
-// Mismo orden de precedencia que /horario: el fin de semana manda sobre el color de
-// período (mañana/tarde/vespertino), que solo se ve en días de semana.
+// El color depende solo del período (mañana/tarde/vespertino) — sábado y domingo ya se
+// distinguen con el encabezado de columna en gris, así que la celda no debe perder el color de
+// período por ser fin de semana (mismo criterio que /horario).
 function claseCeldaDia(diaValor: number, franja: Franja) {
-   if (DIAS_FIN_SEMANA.includes(diaValor)) return 'bg-gray-50 dark:bg-slate-800/40'
    if (franja.periodo === 'vespertino') return 'bg-secondary/10 dark:bg-secondary/15'
    if (franja.periodo === 'tarde') return 'bg-muted'
    return 'bg-default'
@@ -755,6 +755,9 @@ const reservaEditar = ref<Reserva | null>(null)
 const formEditar = reactive({
    titulo: '',
    fecha: '',
+   modoHorario: 'libre' as 'bloque' | 'libre',
+   bloqueInicioId: undefined as number | undefined,
+   bloqueTerminoId: undefined as number | undefined,
    inicio: '',
    fin: '',
    tipoReservaId: 0,
@@ -763,6 +766,13 @@ const formEditar = reactive({
 })
 const errorEditar = ref<string | null>(null)
 const confirmAlcanceEditarMostrar = ref(false)
+
+const bloqueInicioSelEditar = computed(
+   () => bloquesSemestre.value.find((b) => b.id === formEditar.bloqueInicioId) ?? null
+)
+const bloqueTerminoSelEditar = computed(
+   () => bloquesSemestre.value.find((b) => b.id === formEditar.bloqueTerminoId) ?? null
+)
 
 // Igual que itemsTipoReservaCrear, pero si la reserva que se está editando ya es de tipo
 // Ayudantía (creada antes de existir /ayudantias, o desde el propio /ayudantias), se mantiene
@@ -780,6 +790,19 @@ function abrirEditar(reserva: Reserva) {
    formEditar.fecha = reserva.fecha.slice(0, 10)
    formEditar.inicio = horaDeISO(reserva.inicio)
    formEditar.fin = horaDeISO(reserva.fin)
+   // Si el horario actual calza exacto con un par de bloques, se precarga en modo "Por
+   // bloque"; si no (se ingresó con hora libre, o cae en un tramo sin bloque), en "Hora libre".
+   const bi = bloquesSemestre.value.find((b) => horaDeISO(b.inicio) === formEditar.inicio)
+   const bt = bloquesSemestre.value.find((b) => horaDeISO(b.fin) === formEditar.fin)
+   if (bi && bt) {
+      formEditar.modoHorario = 'bloque'
+      formEditar.bloqueInicioId = bi.id
+      formEditar.bloqueTerminoId = bt.id
+   } else {
+      formEditar.modoHorario = 'libre'
+      formEditar.bloqueInicioId = undefined
+      formEditar.bloqueTerminoId = undefined
+   }
    formEditar.tipoReservaId = reserva.tipoReservaId
    // 0 = "sin responsable" en el formulario; al guardar se vuelve a convertir en null.
    formEditar.personaId = reserva.personaId ?? 0
@@ -802,6 +825,11 @@ function guardarEditar() {
 
 async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
    if (!reservaEditar.value) return
+   if (formEditar.modoHorario === 'bloque' && (!bloqueInicioSelEditar.value || !bloqueTerminoSelEditar.value)) return
+   const inicio =
+      formEditar.modoHorario === 'bloque' ? horaDeISO(bloqueInicioSelEditar.value!.inicio) : formEditar.inicio
+   const fin = formEditar.modoHorario === 'bloque' ? horaDeISO(bloqueTerminoSelEditar.value!.fin) : formEditar.fin
+
    guardando.value = true
    errorEditar.value = null
    try {
@@ -815,8 +843,8 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
             salaCodigo: reservaEditar.value.salaCodigo,
             titulo: formEditar.titulo,
             fecha: formEditar.fecha,
-            inicio: formEditar.inicio,
-            fin: formEditar.fin,
+            inicio,
+            fin,
             tipoReservaId: Number(formEditar.tipoReservaId),
             personaId: Number(formEditar.personaId) || null,
             publica: formEditar.publica,
@@ -1179,6 +1207,15 @@ function nombreAsignaturaDe(reserva: Reserva) {
    return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
 }
 
+// Carrera de una reserva: de la clase si es una sesión de paralelo, del paralelo si es una
+// Ayudantía creada desde /ayudantias (ver Reserva.paralelo) — cualquier otro tipo de reserva no
+// tiene carrera asociada. Mismo criterio que /ayudantias.
+function carreraDe(reserva: Reserva) {
+   const carrera =
+      reserva.sesionParalelo?.paralelo.asignaturaPlan.plan.carrera ?? reserva.paralelo?.asignaturaPlan.plan.carrera
+   return carrera?.nombreCorto ?? null
+}
+
 // Color impreso de una reserva. Las clases NO usan el color de su tipo: todas serían del mismo
 // azul y la hoja quedaría de un solo tono. Cada paralelo lleva el suyo —el que se le asignó en
 // /horario— para poder seguir una asignatura de un vistazo. Si todavía no tiene color asignado
@@ -1524,11 +1561,14 @@ watch(editandoAlgo, async (ocupado) => {
                                           </span>
                                           <template v-if="rp.reserva.sesionParalelo">
                                              <div class="truncate">{{ nombreAsignaturaDe(rp.reserva) }}</div>
-                                             <div class="truncate">
-                                                {{
-                                                   rp.reserva.sesionParalelo.paralelo.asignaturaPlan.plan.carrera
-                                                      .nombreCorto
-                                                }}
+                                             <div class="truncate">{{ carreraDe(rp.reserva) }}</div>
+                                          </template>
+                                          <template v-else>
+                                             <div v-if="rp.reserva.subtitulo" class="truncate">
+                                                {{ rp.reserva.subtitulo }}
+                                             </div>
+                                             <div v-if="carreraDe(rp.reserva)" class="truncate">
+                                                {{ carreraDe(rp.reserva) }}
                                              </div>
                                           </template>
                                           <!-- Quién figura como responsable, en cualquier tipo de reserva (clases,
@@ -1709,6 +1749,17 @@ watch(editandoAlgo, async (ocupado) => {
                      {{ reservaSeleccionada.sesionParalelo.paralelo.asignaturaPlan.plan.numero }}
                   </p>
                </div>
+               <!-- Ayudantía creada desde /ayudantias: la asignatura viene en subtitulo (no hay
+                    sesionParalelo) y la carrera en paralelo — ver Reserva.paralelo. -->
+               <div v-else-if="reservaSeleccionada.subtitulo || reservaSeleccionada.paralelo">
+                  <p class="text-xs text-usm-text-muted dark:text-slate-400">Asignatura</p>
+                  <p v-if="reservaSeleccionada.subtitulo" class="font-medium text-usm-text dark:text-white">
+                     {{ reservaSeleccionada.subtitulo }}
+                  </p>
+                  <p v-if="reservaSeleccionada.paralelo" class="text-usm-text-muted dark:text-slate-400">
+                     {{ reservaSeleccionada.paralelo.asignaturaPlan.plan.carrera.nombre }}
+                  </p>
+               </div>
                <div class="flex items-start justify-between gap-3">
                   <div class="space-y-0.5">
                      <p class="text-xs text-usm-text-muted dark:text-slate-400">Tipo</p>
@@ -1869,7 +1920,35 @@ watch(editandoAlgo, async (ocupado) => {
                <UFormField label="Fecha" name="fecha">
                   <UInput v-model="formEditar.fecha" type="date" class="w-full" />
                </UFormField>
-               <div class="grid grid-cols-2 gap-4">
+               <UFormField label="Horario">
+                  <UTabs
+                     v-model="formEditar.modoHorario"
+                     :items="[
+                        { label: 'Por bloque', value: 'bloque' },
+                        { label: 'Hora libre', value: 'libre' },
+                     ]"
+                     :content="false"
+                  />
+               </UFormField>
+               <div v-if="formEditar.modoHorario === 'bloque'" class="grid grid-cols-2 gap-4">
+                  <UFormField label="Bloque de inicio" name="bloqueInicioId">
+                     <USelectMenu
+                        v-model="formEditar.bloqueInicioId"
+                        :items="itemsBloque"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+                  <UFormField label="Bloque de término" name="bloqueTerminoId">
+                     <USelectMenu
+                        v-model="formEditar.bloqueTerminoId"
+                        :items="itemsBloque"
+                        value-key="value"
+                        class="w-full"
+                     />
+                  </UFormField>
+               </div>
+               <div v-else class="grid grid-cols-2 gap-4">
                   <UFormField label="Hora de inicio" name="inicio">
                      <UInput
                         :model-value="formEditar.inicio"
@@ -2059,8 +2138,11 @@ watch(editandoAlgo, async (ocupado) => {
                               <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-black">
                                  {{ nombreAsignaturaDe(entrada.reserva) }}
                               </p>
-                              <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-gray-700">
-                                 {{ entrada.reserva.sesionParalelo.paralelo.asignaturaPlan.plan.carrera.nombreCorto }}
+                              <p v-else-if="entrada.reserva.subtitulo" class="wrap-break-word text-black">
+                                 {{ entrada.reserva.subtitulo }}
+                              </p>
+                              <p v-if="carreraDe(entrada.reserva)" class="wrap-break-word text-gray-700">
+                                 {{ carreraDe(entrada.reserva) }}
                               </p>
                               <p v-if="profesorDe(entrada.reserva)" class="wrap-break-word text-gray-700">
                                  {{ profesorDe(entrada.reserva) }}

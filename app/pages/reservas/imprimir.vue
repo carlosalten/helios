@@ -334,6 +334,15 @@ function nombreAsignaturaDe(reserva: Reserva) {
    return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
 }
 
+// Carrera de una reserva: de la clase si es una sesión de paralelo, del paralelo si es una
+// Ayudantía creada desde /ayudantias (ver Reserva.paralelo) — cualquier otro tipo de reserva no
+// tiene carrera asociada. Mismo criterio en /reservas/horario.
+function carreraDe(reserva: Reserva) {
+   const carrera =
+      reserva.sesionParalelo?.paralelo.asignaturaPlan.plan.carrera ?? reserva.paralelo?.asignaturaPlan.plan.carrera
+   return carrera?.nombreCorto ?? null
+}
+
 // Mismo criterio de color que /reservas/horario: cada paralelo lleva el suyo (o uno derivado
 // de su identificador si aún no tiene) para poder seguir una asignatura de un vistazo.
 function colorImpresion(reserva: Reserva) {
@@ -550,8 +559,11 @@ function imprimirHorarios() {
                               <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-black">
                                  {{ nombreAsignaturaDe(entrada.reserva) }}
                               </p>
-                              <p v-if="entrada.reserva.sesionParalelo" class="wrap-break-word text-gray-700">
-                                 {{ entrada.reserva.sesionParalelo.paralelo.asignaturaPlan.plan.carrera.nombreCorto }}
+                              <p v-else-if="entrada.reserva.subtitulo" class="wrap-break-word text-black">
+                                 {{ entrada.reserva.subtitulo }}
+                              </p>
+                              <p v-if="carreraDe(entrada.reserva)" class="wrap-break-word text-gray-700">
+                                 {{ carreraDe(entrada.reserva) }}
                               </p>
                               <p v-if="profesorDe(entrada.reserva)" class="wrap-break-word text-gray-700">
                                  {{ profesorDe(entrada.reserva) }}

@@ -215,6 +215,22 @@ function puedeVerRuta(ruta: string) {
 function estiloPunto(color: string | null) {
    return { backgroundColor: color ?? '#94a3b8' }
 }
+
+/* ── Leyenda de "Mis salas hoy" ────────────────────────────────────────────
+   Un color por tipo de reserva (TipoReserva.color, el mismo que usan las tarjetas de
+   /reservas/horario) — se junta uno por nombre entre todas las salas a cargo, ordenados de
+   mayor a menor ocupación total, para no listar tipos que hoy no aparecen en ninguna sala. */
+const leyendaSalasHoy = computed(() => {
+   const porTipo = new Map<string, { nombre: string; color: string; ocupados: number }>()
+   for (const sala of resumen.value?.misSalas ?? []) {
+      for (const tipo of sala.ocupacionPorTipo) {
+         const actual = porTipo.get(tipo.nombre) ?? { nombre: tipo.nombre, color: tipo.color, ocupados: 0 }
+         actual.ocupados += tipo.ocupados
+         porTipo.set(tipo.nombre, actual)
+      }
+   }
+   return [...porTipo.values()].sort((a, b) => b.ocupados - a.ocupados)
+})
 </script>
 
 <template>
@@ -385,12 +401,15 @@ function estiloPunto(color: string | null) {
                <!-- Estado de la planificación: solo Administrador, Director Departamento y Jefe
                     de Carrera — son quienes gestionan sala/profesor/topes de la malla. -->
                <div v-if="puedeVerPlanificacion" class="rounded-2xl border border-default bg-default p-5 sm:p-6">
-                  <div class="mb-4 flex items-center gap-2">
+                  <div class="mb-1 flex items-center gap-2">
                      <UIcon name="i-lucide-clipboard-check" class="size-4 text-usm-green" />
                      <h2 class="text-sm font-semibold text-usm-text dark:text-white">
                         {{ esPersonal ? 'Planificación de mis carreras' : 'Estado de la planificación' }}
                      </h2>
                   </div>
+                  <p class="mb-4 text-xs text-usm-text-muted dark:text-slate-400">
+                     Sobre todas las clases del semestre, no solo las de hoy.
+                  </p>
                   <p
                      v-if="!resumen.planificacion?.clasesTotales"
                      class="rounded-xl bg-muted px-4 py-6 text-center text-sm text-usm-text-muted dark:text-slate-400"
@@ -510,11 +529,11 @@ function estiloPunto(color: string | null) {
                               </UBadge>
                            </p>
                            <p class="truncate text-xs text-usm-text-muted dark:text-slate-400">
-                              {{ clase.asignaturaNombre }} · {{ clase.carrera }}
+                              {{ clase.asignaturaNombre }}
                            </p>
-                           <p class="mt-0.5 flex items-center gap-1 text-xs text-usm-text-muted dark:text-slate-400">
-                              <UIcon name="i-lucide-user" class="size-3 shrink-0" />
-                              <span class="truncate" :class="clase.profesor ? '' : 'italic'">
+                           <p class="truncate text-xs text-usm-text-muted dark:text-slate-400">
+                              Clase · {{ clase.carreraCorta }} ·
+                              <span :class="clase.profesor ? '' : 'italic'">
                                  {{ clase.profesor ?? 'Sin profesor asignado' }}
                               </span>
                            </p>
@@ -585,8 +604,12 @@ function estiloPunto(color: string | null) {
                                  En curso
                               </UBadge>
                            </p>
+                           <p v-if="reserva.asignatura" class="truncate text-xs text-usm-text-muted dark:text-slate-400">
+                              {{ reserva.asignatura }}
+                           </p>
                            <p class="truncate text-xs text-usm-text-muted dark:text-slate-400">
                               {{ reserva.tipo }}
+                              <template v-if="reserva.carrera"> · {{ reserva.carrera }}</template>
                               <template v-if="reserva.responsable"> · {{ reserva.responsable }}</template>
                            </p>
                         </div>
@@ -610,10 +633,13 @@ function estiloPunto(color: string | null) {
             <div v-if="esPersonal" class="grid gap-6 lg:grid-cols-2">
                <!-- Mis carreras -->
                <div class="rounded-2xl border border-default bg-default p-5 sm:p-6">
-                  <div class="mb-4 flex items-center gap-2">
+                  <div class="mb-1 flex items-center gap-2">
                      <UIcon name="i-lucide-graduation-cap" class="size-4 text-usm-blue" />
                      <h2 class="text-sm font-semibold text-usm-text dark:text-white">Mis carreras</h2>
                   </div>
+                  <p class="mb-4 text-xs text-usm-text-muted dark:text-slate-400">
+                     Sobre todas las clases del semestre, no solo las de hoy.
+                  </p>
                   <p
                      v-if="!resumen.misCarreras.length"
                      class="rounded-xl bg-muted px-4 py-6 text-center text-sm text-usm-text-muted dark:text-slate-400"
@@ -704,31 +730,48 @@ function estiloPunto(color: string | null) {
                      No tienes salas a tu cargo. Pídele a un Administrador que te agregue como encargado en Salas →
                      Asignación.
                   </p>
-                  <div v-else class="space-y-3">
-                     <div v-for="sala in resumen.misSalas" :key="sala.codigo">
-                        <div class="mb-1 flex items-baseline justify-between gap-3">
-                           <span class="min-w-0 truncate text-xs font-medium text-usm-text dark:text-slate-200">
-                              {{ sala.codigo }}
-                              <span class="font-normal text-usm-text-muted dark:text-slate-400">
-                                 · {{ sala.tipoSala }}
+                  <template v-else>
+                     <div v-if="leyendaSalasHoy.length" class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span
+                           v-for="tipo in leyendaSalasHoy"
+                           :key="tipo.nombre"
+                           class="flex items-center gap-1.5 text-xs text-usm-text-muted dark:text-slate-400"
+                        >
+                           <span class="size-2 shrink-0 rounded-full" :style="estiloPunto(tipo.color)" />
+                           {{ tipo.nombre }}
+                        </span>
+                     </div>
+                     <div class="space-y-3">
+                        <div v-for="sala in resumen.misSalas" :key="sala.codigo">
+                           <div class="mb-1 flex items-baseline justify-between gap-3">
+                              <span class="min-w-0 truncate text-xs font-medium text-usm-text dark:text-slate-200">
+                                 {{ sala.codigo }}
+                                 <span class="font-normal text-usm-text-muted dark:text-slate-400">
+                                    · {{ sala.tipoSala }}
+                                 </span>
                               </span>
-                           </span>
-                           <span class="shrink-0 text-xs text-usm-text-muted dark:text-slate-400">
-                              {{ sala.clasesHoy }} {{ sala.clasesHoy === 1 ? 'clase' : 'clases' }}
-                              <template v-if="sala.reservasHoy">
-                                 · {{ sala.reservasHoy }}
-                                 {{ sala.reservasHoy === 1 ? 'reserva' : 'reservas' }}
-                              </template>
-                           </span>
-                        </div>
-                        <div class="h-1.5 overflow-hidden rounded-full bg-elevated">
-                           <div
-                              class="h-full rounded-full bg-usm-purple transition-all"
-                              :style="{ width: `${porcentaje(sala.ocupadosHoy, sala.totalBloques)}%` }"
-                           />
+                              <span class="shrink-0 text-xs text-usm-text-muted dark:text-slate-400">
+                                 {{ sala.clasesHoy }} {{ sala.clasesHoy === 1 ? 'clase' : 'clases' }}
+                                 <template v-if="sala.reservasHoy">
+                                    · {{ sala.reservasHoy }}
+                                    {{ sala.reservasHoy === 1 ? 'reserva' : 'reservas' }}
+                                 </template>
+                              </span>
+                           </div>
+                           <div class="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full bg-elevated">
+                              <div
+                                 v-for="tipo in sala.ocupacionPorTipo"
+                                 :key="tipo.nombre"
+                                 class="h-full transition-all"
+                                 :style="{
+                                    backgroundColor: tipo.color,
+                                    width: `${porcentaje(tipo.ocupados, sala.totalBloques)}%`,
+                                 }"
+                              />
+                           </div>
                         </div>
                      </div>
-                  </div>
+                  </template>
                </div>
             </div>
 
