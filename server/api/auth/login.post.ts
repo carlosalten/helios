@@ -123,6 +123,7 @@ export default defineEventHandler(async (event) => {
          activo: persona.activo,
          rol,
          jerarquiaRol: persona.rol.jerarquia,
+         puedeSuspenderCualquierReserva: persona.rol.suspenderCualquierReserva,
          personaId: persona.id,
          permisos,
          carrerasJefe,

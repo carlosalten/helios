@@ -30,6 +30,12 @@ model Rol {
   // Administrador lo desmarque, el comportamiento es el mismo de siempre (todas las personas
   // aparecen, sin filtrar por rol).
   mostrarEnHorarioProfesores Boolean   @default(true) @map("mostrar_en_horario_profesores")
+  // Si las personas de este rol pueden suspender/reactivar CUALQUIER reserva (no solo las
+  // propias) en /reservas/horario — ver server/utils/alcanceReservas.ts (`puedeSuspenderReserva`)
+  // y app/pages/configuracion/index.vue, donde se administra. Default false: los roles que no
+  // se marquen acá solo pueden suspender lo que ya podían modificar antes (propias, o el
+  // alcance más amplio que ya tuvieran por ser Administrador/Jefe de Carrera/encargado de sala).
+  suspenderCualquierReserva  Boolean   @default(false) @map("suspender_cualquier_reserva")
   personas                   Persona[]
 
   @@map("rol")
@@ -530,12 +536,12 @@ model Reserva {
   // en false para reservas que deben tomar la sala en la BD pero no anunciarse (p. ej.
   // bloqueos internos de mantenimiento).
   publica          Boolean  @default(true)
-  // Reserva cancelada: a diferencia de borrarla, queda visible (destacada en rojo) en
+  // Reserva suspendida: a diferencia de borrarla, queda visible (destacada en rojo) en
   // /reservas/horario y en la pantalla pública — sirve para avisar que una clase puntual no se
   // dicta ese día sin perder el registro de que la sala estaba tomada. No aplica a la serie
   // completa de una reserva recurrente, solo a esta ocurrencia — ver
-  // server/api/reservas/[id]/cancelar.patch.ts.
-  cancelada        Boolean  @default(false)
+  // server/api/reservas/[id]/suspender.patch.ts.
+  suspendida       Boolean  @default(false)
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -566,10 +572,10 @@ model Reserva {
 // una propuesta, sin relación con el `Rol` de acceso al sistema).
 
 model TtProceso {
-  id   Int @id @default(autoincrement())
+  id                     Int     @id @default(autoincrement())
   // "año" en el diagrama original; sin tilde acá por consistencia con el resto del schema
   // (identificadores en ASCII).
-  anio Int
+  anio                   Int
   // Si se le muestra a los estudiantes de este proceso el profesor guía que tienen asignado en
   // sus propuestas — toggle en /titulaciones/procesos, lo consume /estudiante/propuestas. Por
   // defecto no se muestra: la jefatura decide cuándo anunciarlo.

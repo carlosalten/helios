@@ -13,6 +13,9 @@ export interface Rol {
    // Si las personas de este rol aparecen en el panel "Profesores" de /horario — administrable
    // desde /configuracion. Ver app/pages/horario/index.vue.
    mostrarEnHorarioProfesores: boolean
+   // Si las personas de este rol pueden suspender/reactivar cualquier reserva en
+   // /reservas/horario, no solo las propias — administrable desde /configuracion.
+   suspenderCualquierReserva: boolean
 }
 
 export interface PersonaBase {

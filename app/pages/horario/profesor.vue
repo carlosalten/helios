@@ -5,11 +5,20 @@ import type { Persona } from '~/types/persona'
 import type { EventoAgenda } from '~/types/agendaProfesor'
 import { DIAS_SEMANA, DIAS_FIN_SEMANA } from '~/types/dia'
 
-const [{ data: semestres }, { data: bloquesRaw }, { data: personas }] = await Promise.all([
+const toast = useToast()
+const { user } = useUserSession()
+
+const [{ data: semestres }, { data: bloquesRaw }, { data: personas }, { data: misSalasEncargado }] = await Promise.all([
    useFetch<Semestre[]>('/api/semestres'),
    useFetch<Bloque[]>('/api/bloques'),
    useFetch<Persona[]>('/api/personas'),
+   useFetch<string[]>('/api/reservas/mis-salas-encargado'),
 ])
+
+// La acción de suspender es de /reservas/horario (mismo endpoint, mismo permiso que exige el
+// servidor) aunque se dispare desde acá — ver `puedeSuspenderEvento` más abajo.
+const { puedeEditar: puedeEditarReservas } = usePermiso('/reservas/horario')
+const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? []))
 
 /* ── Semestre: define la plantilla de bloques y acota las clases ─────────── */
 const semestreSeleccionadoId = ref<number>()
@@ -92,7 +101,11 @@ const fechasSemana = computed(
 )
 
 /* ── Agenda del profesor en la semana ───────────────────────────────────── */
-const { data: eventos, status } = await useFetch<EventoAgenda[]>(() => {
+const {
+   data: eventos,
+   status,
+   refresh: refrescarEventos,
+} = await useFetch<EventoAgenda[]>(() => {
    const desde = formatFechaISO(semanaInicio.value)
    const hasta = formatFechaISO(sumarDias(semanaInicio.value, 6))
    return (
@@ -146,9 +159,16 @@ function idxBloqueFin(minutos: number) {
 // Dos eventos son la misma actividad si solo se diferencian en la hora. El caso que importa:
 // cada bloque de una clase es una sesión distinta —y por lo tanto una reserva distinta—, así
 // que una clase de cuatro bloques llega acá como cuatro eventos idénticos seguidos. Se compara
-// también la sala: una clase que cambia de sala entre bloques no es un solo tramo.
+// también la sala: una clase que cambia de sala entre bloques no es un solo tramo. Si solo un
+// bloque está suspendido tampoco se fusiona con el resto: se perdería justo el dato de cuál
+// bloque está suspendido (ver /reservas/horario, mismo criterio).
 function mismaActividad(a: EventoAgenda, b: EventoAgenda) {
-   return a.titulo === b.titulo && a.tipoReserva === b.tipoReserva && a.salaCodigo === b.salaCodigo
+   return (
+      a.titulo === b.titulo &&
+      a.tipoReserva === b.tipoReserva &&
+      a.salaCodigo === b.salaCodigo &&
+      a.suspendida === b.suspendida
+   )
 }
 
 // Fusiona los tramos de la misma actividad que caen en filas consecutivas, para que salga un
@@ -253,15 +273,94 @@ function detalleHorarioSala(entrada: EntradaCelda) {
    return partes
 }
 
-// Color del evento: el del paralelo o el del tipo de reserva. Se aplica inline porque es un
-// valor arbitrario en tiempo de ejecución y Tailwind no puede generar clases para él.
+// Mismo rojo que /reservas/horario para una reserva suspendida — tiene que distinguirse de un
+// vistazo, sin importar el color que le tocaría por su tipo o paralelo.
+const COLOR_SUSPENDIDA = '#C8102E'
+
+// Color del evento: el del paralelo o el del tipo de reserva, salvo que esté suspendido — ese
+// caso siempre gana. Se aplica inline porque es un valor arbitrario en tiempo de ejecución y
+// Tailwind no puede generar clases para él.
 function estiloEvento(evento: EventoAgenda) {
+   if (evento.suspendida) return { borderColor: COLOR_SUSPENDIDA, backgroundColor: `${COLOR_SUSPENDIDA}1a` }
    if (!evento.color) return {}
    return { borderColor: `${evento.color}66`, backgroundColor: `${evento.color}1a` }
 }
 
 const totalEventos = computed(() => (eventos.value ?? []).length)
 const totalClases = computed(() => (eventos.value ?? []).filter((e) => e.tipo === 'clase').length)
+
+/* ── Suspender / reactivar una reserva desde la agenda del profesor ───────
+   Mismo alcance que server/utils/alcanceReservas.ts (`puedeSuspenderReserva`) y
+   /reservas/horario (mismo endpoint, mismo permiso que exige el servidor): acá "reserva
+   propia" equivale a estar viendo la propia agenda (todos los eventos de la página son del
+   profesor seleccionado). Solo aplica a eventos con una fila `Reserva` real — una clase sin
+   sala (evento.id empieza con "s-") no tiene nada que suspender. */
+function idReservaDe(evento: EventoAgenda): number | null {
+   if (!evento.id.startsWith('r-')) return null
+   const id = Number(evento.id.slice(2))
+   return Number.isInteger(id) ? id : null
+}
+
+function puedeSuspenderEvento(evento: EventoAgenda) {
+   const reservaId = idReservaDe(evento)
+   if (reservaId == null) return false
+   if (!puedeEditarReservas.value || !user.value) return false
+   if (user.value.rol === 'Administrador' || user.value.rol === 'Jefe de Carrera') return true
+   if (user.value.puedeSuspenderCualquierReserva) return true
+
+   const esPropia = profesorSeleccionado.value?.id === user.value.personaId
+   if (evento.tipo !== 'clase' && esPropia) return true
+
+   if (user.value.rol === 'Apoyo Docente' && evento.salaCodigo && misSalasEncargadoSet.value.has(evento.salaCodigo)) {
+      return true
+   }
+
+   return false
+}
+
+const suspendiendo = ref<string | null>(null)
+// Reactivar no pide confirmación (deshace el estado, sin efecto destructivo); suspender sí,
+// porque la reserva pasa a mostrarse destacada en rojo acá, en /reservas/horario, su reporte
+// impreso y la pantalla pública — mismo criterio que /reservas/horario.
+const confirmSuspenderMostrar = ref(false)
+const eventoASuspender = ref<EventoAgenda | null>(null)
+
+function abrirSuspender(evento: EventoAgenda) {
+   if (evento.suspendida) {
+      alternarSuspendida(evento)
+      return
+   }
+   eventoASuspender.value = evento
+   confirmSuspenderMostrar.value = true
+}
+
+async function confirmarSuspender() {
+   if (!eventoASuspender.value) return
+   const ok = await alternarSuspendida(eventoASuspender.value)
+   if (ok) confirmSuspenderMostrar.value = false
+}
+
+async function alternarSuspendida(evento: EventoAgenda): Promise<boolean> {
+   const reservaId = idReservaDe(evento)
+   if (reservaId == null) return false
+   suspendiendo.value = evento.id
+   try {
+      await $fetch(`/api/reservas/${reservaId}/suspender`, { method: 'PATCH' })
+      await refrescarEventos()
+      toast.add({
+         title: evento.suspendida ? 'Reserva reactivada' : 'Reserva suspendida',
+         color: 'success',
+         icon: 'i-lucide-check-circle',
+      })
+      return true
+   } catch (e: unknown) {
+      const mensaje = (e as { data?: { message?: string } }).data?.message ?? 'Error al actualizar la reserva'
+      toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
+      return false
+   } finally {
+      suspendiendo.value = null
+   }
+}
 
 /* ── Imprimir ────────────────────────────────────────────────────────────
    Se reusa la misma tabla: en pantalla se ve la interactiva y al imprimir se ocultan los
@@ -401,8 +500,41 @@ function imprimirHorario() {
                                        class="flex-1 rounded-lg border p-1.5 text-xs print:rounded-none"
                                        :style="estiloEvento(entrada.evento)"
                                     >
-                                       <p class="font-semibold text-usm-text dark:text-white">
-                                          {{ entrada.evento.asignatura ?? entrada.evento.titulo }}
+                                       <div class="flex items-start justify-between gap-1">
+                                          <p
+                                             class="font-semibold text-usm-text dark:text-white"
+                                             :class="{ 'line-through opacity-70': entrada.evento.suspendida }"
+                                          >
+                                             {{ entrada.evento.asignatura ?? entrada.evento.titulo }}
+                                          </p>
+                                          <UTooltip
+                                             v-if="puedeSuspenderEvento(entrada.evento)"
+                                             :text="
+                                                entrada.evento.suspendida ? 'Reactivar reserva' : 'Suspender reserva'
+                                             "
+                                             class="print:hidden"
+                                          >
+                                             <UButton
+                                                :icon="
+                                                   entrada.evento.suspendida ? 'i-lucide-rotate-ccw' : 'i-lucide-ban'
+                                                "
+                                                color="neutral"
+                                                variant="ghost"
+                                                size="xs"
+                                                :loading="suspendiendo === entrada.evento.id"
+                                                :aria-label="
+                                                   entrada.evento.suspendida ? 'Reactivar reserva' : 'Suspender reserva'
+                                                "
+                                                class="-m-1 shrink-0"
+                                                @click="abrirSuspender(entrada.evento)"
+                                             />
+                                          </UTooltip>
+                                       </div>
+                                       <p
+                                          v-if="entrada.evento.suspendida"
+                                          class="font-bold text-usm-text dark:text-white"
+                                       >
+                                          Suspendida
                                        </p>
                                        <p
                                           v-if="detalleHorarioSala(entrada).length"
@@ -477,6 +609,25 @@ function imprimirHorario() {
             </div>
          </div>
       </div>
+
+      <!-- Confirmar suspensión de reserva -->
+      <ConfirmModal
+         v-model:open="confirmSuspenderMostrar"
+         title="Suspender reserva"
+         confirm-label="Suspender"
+         confirm-icon="i-lucide-ban"
+         confirm-color="warning"
+         :loading="suspendiendo === eventoASuspender?.id"
+         @confirm="confirmarSuspender"
+      >
+         <p class="text-sm text-usm-text dark:text-slate-200">
+            ¿Suspender la reserva
+            <span class="font-semibold">{{ eventoASuspender?.asignatura ?? eventoASuspender?.titulo }}</span>
+            del
+            {{ eventoASuspender ? formatFechaCortaConAnio(new Date(`${eventoASuspender.fecha}T00:00:00`)) : '' }}? Queda
+            destacada en rojo en el horario, el reporte impreso y la pantalla pública, pero no se borra.
+         </p>
+      </ConfirmModal>
    </div>
 </template>
 

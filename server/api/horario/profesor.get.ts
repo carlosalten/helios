@@ -100,6 +100,7 @@ export default defineEventHandler(async (event) => {
          paraleloCodigo: paralelo?.codigo ?? null,
          cursoNombre: paralelo?.curso.nombre ?? null,
          tipoReserva: reserva.tipoReserva.nombre,
+         suspendida: reserva.suspendida,
       }
       if (paralelo) agregarClase(evento, paralelo.asignaturaPlan.asignaturaId, paralelo.curso.nombre)
       else eventos.push(evento)
@@ -143,6 +144,8 @@ export default defineEventHandler(async (event) => {
                   // No hay fila `Reserva` (la sesión no tiene sala), pero es una clase igual:
                   // se rotula como tal para que la vista la trate como al resto de las clases.
                   tipoReserva: 'Clase',
+                  // Sin fila `Reserva` no hay nada que suspender.
+                  suspendida: false,
                },
                paralelo.asignaturaPlan.asignaturaId,
                paralelo.curso.nombre
