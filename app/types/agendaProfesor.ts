@@ -21,4 +21,7 @@ export interface EventoAgenda {
    paraleloCodigo: string | null
    cursoNombre: string | null
    tipoReserva: string | null
+   // Reserva.suspendida de la fila subyacente — siempre false para una clase sin sala (no tiene
+   // fila `Reserva` que suspender, ver el comentario sobre `id` más arriba).
+   suspendida: boolean
 }

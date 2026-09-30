@@ -62,7 +62,7 @@ interface ClaseResumen {
    inicio: string
    fin: string
    responsable: string | null
-   cancelada: boolean
+   suspendida: boolean
 }
 
 // Una clase de varias horas (ej. 3 bloques de teoría seguidos) queda partida en una
@@ -100,9 +100,9 @@ function fusionarBloquesContiguos(crudas: ReservaCruda[]): ClaseResumen[] {
             actual.bloqueNumero != null &&
             r.bloqueNumero != null &&
             actual.bloqueNumero + 1 === r.bloqueNumero &&
-            // Si solo un bloque de una clase de varias horas se cancela, no puede fundirse con
-            // el resto en una sola entrada: se perdería justo el dato de cuál bloque canceló.
-            actual.cancelada === r.cancelada
+            // Si solo un bloque de una clase de varias horas se suspende, no puede fundirse con
+            // el resto en una sola entrada: se perdería justo el dato de cuál bloque suspendió.
+            actual.suspendida === r.suspendida
          ) {
             // Mismo criterio que `fusionarContiguas` en /reservas/imprimir: se extiende el
             // tramo actual en vez de crear uno nuevo.
@@ -208,7 +208,7 @@ export default defineEventHandler(async (event) => {
          inicio,
          fin,
          responsable: r.persona ? `${r.persona.nombre} ${r.persona.apellido}` : null,
-         cancelada: r.cancelada,
+         suspendida: r.suspendida,
          grupoId: paralelo
             ? `${r.salaCodigo}-${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}`
             : `sola-${r.id}`,

@@ -40,13 +40,37 @@ const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? [
 
 function puedeModificarReserva(reserva: Reserva) {
    // Una tarjeta que fusiona 2+ bloques de una misma clase (ver `esClaseFusionada` más abajo)
-   // lleva el id de solo el primer bloque: editarla/moverla/cancelarla/borrarla desde acá
+   // lleva el id de solo el primer bloque: editarla/moverla/suspenderla/borrarla desde acá
    // tocaría solo esa porción y dejaría el resto de la clase atrás, sin que se note en
    // pantalla. Para mover una clase completa se sigue usando /horario. "Copiar" (que no muta
    // el original) no pasa por esta función, así que sigue disponible.
    if (esClaseFusionada(reserva)) return false
    if (!puedeEditar.value || !user.value) return false
    if (user.value.rol === 'Administrador' || user.value.rol === 'Jefe de Carrera') return true
+
+   const esClase = reserva.sesionParaleloId != null
+   if (!esClase && reserva.personaId === user.value.personaId) return true
+
+   if (user.value.rol === 'Apoyo Docente' && misSalasEncargadoSet.value.has(reserva.salaCodigo)) return true
+
+   return false
+}
+
+// Alcance para SUSPENDER — más amplio que `puedeModificarReserva` para los roles marcados con
+// `Rol.suspenderCualquierReserva` (ver /configuracion): pueden suspender/reactivar cualquier
+// reserva aunque no puedan editarla ni borrarla. Mismo criterio que
+// server/utils/alcanceReservas.ts (`puedeSuspenderReserva`).
+//
+// A diferencia de editar/mover/borrar, acá NO se excluyen las tarjetas fusionadas (2+ bloques
+// contiguos de una misma clase, ver `esClaseFusionada`): suspender solo alterna la ocurrencia
+// puntual que la tarjeta representa (el primer bloque) y no corrompe nada — en cuanto esa
+// ocurrencia queda con un `suspendida` distinto al resto, `fusionarClasesContiguas` deja de
+// fusionarla con las siguientes y la grilla la separa sola. Por eso cualquier reserva se puede
+// suspender sin importar su tipo (Clase incluida) ni si está fusionada.
+function puedeSuspenderReserva(reserva: Reserva) {
+   if (!puedeEditar.value || !user.value) return false
+   if (user.value.rol === 'Administrador' || user.value.rol === 'Jefe de Carrera') return true
+   if (user.value.puedeSuspenderCualquierReserva) return true
 
    const esClase = reserva.sesionParaleloId != null
    if (!esClase && reserva.personaId === user.value.personaId) return true
@@ -318,7 +342,7 @@ function bloqueNumeroDe(horaISO: string) {
 // último, para no mostrar una clase de 3 horas como 3 cuadros separados. Solo aplica a
 // reservas de clase (`sesionParalelo`): Ayudantías y demás tipos de reserva pasan tal cual.
 // Además de fusionar, registra en `idsFusionados` el id de toda tarjeta resultante de 2+
-// bloques — `esClaseFusionada` usa ese registro para bloquear editar/mover/cancelar/borrar
+// bloques — `esClaseFusionada` usa ese registro para bloquear editar/mover/suspender/borrar
 // sobre esa tarjeta (ver el comentario en `puedeModificarReserva`).
 function fusionarClasesContiguas(reservasDia: Reserva[], idsFusionados: Set<number>): Reserva[] {
    const porParalelo = new Map<number, Reserva[]>()
@@ -349,7 +373,7 @@ function fusionarClasesContiguas(reservasDia: Reserva[], idsFusionados: Set<numb
          const bloqueActual = bloqueNumeroDe(r.inicio)
          const esContiguo =
             actual && bloqueAnterior != null && bloqueActual != null && bloqueActual === bloqueAnterior + 1
-         if (esContiguo && actual!.cancelada === r.cancelada) {
+         if (esContiguo && actual!.suspendida === r.suspendida) {
             actual = { ...actual!, fin: r.fin }
             cantidad++
          } else {
@@ -486,15 +510,15 @@ function claseCeldaDia(diaValor: number, franja: Franja) {
 }
 
 // Mismo rojo que usa el resto de la app para lo destructivo/urgente (--color-usm-red). Una
-// reserva cancelada lo usa siempre, sin importar el color de su tipo: tiene que distinguirse
+// reserva suspendida lo usa siempre, sin importar el color de su tipo: tiene que distinguirse
 // de un vistazo, no leerse como "una reserva más".
-const COLOR_CANCELADA = '#C8102E'
+const COLOR_SUSPENDIDA = '#C8102E'
 
 // Cada reserva toma el color de su tipo: borde sólido en el color y un fondo con el mismo
-// tono a baja opacidad (alpha "1A" ≈ 10%, agregado directo al hex de 6 dígitos). Cancelada:
+// tono a baja opacidad (alpha "1A" ≈ 10%, agregado directo al hex de 6 dígitos). Suspendida:
 // fondo más marcado (alpha "33" ≈ 20%) para que resalte incluso en un cuadro muy angosto.
 function estiloReserva(reserva: Reserva) {
-   if (reserva.cancelada) return { borderColor: COLOR_CANCELADA, backgroundColor: `${COLOR_CANCELADA}33` }
+   if (reserva.suspendida) return { borderColor: COLOR_SUSPENDIDA, backgroundColor: `${COLOR_SUSPENDIDA}33` }
    return { borderColor: reserva.tipoReserva.color, backgroundColor: `${reserva.tipoReserva.color}1A` }
 }
 // Posición del cuadro dentro de su cluster: si se solapa con otras reservas, cada una toma
@@ -509,14 +533,14 @@ function estiloPosicion(rp: ReservaPosicionada) {
    }
 }
 // Badge del tipo dentro del cuadro: mismo color del tipo, pero como texto sobre un fondo más
-// tenue (alpha "26" ≈ 15%) para que se lea sobre el fondo ya teñido del cuadro. Cancelada:
-// reemplaza el badge de tipo por uno "Cancelada" en rojo, siempre.
+// tenue (alpha "26" ≈ 15%) para que se lea sobre el fondo ya teñido del cuadro. Suspendida:
+// reemplaza el badge de tipo por uno "Suspendida" en rojo, siempre.
 function estiloBadgeTipo(reserva: Reserva) {
-   if (reserva.cancelada) return { backgroundColor: `${COLOR_CANCELADA}26`, color: COLOR_CANCELADA }
+   if (reserva.suspendida) return { backgroundColor: `${COLOR_SUSPENDIDA}26`, color: COLOR_SUSPENDIDA }
    return { backgroundColor: `${reserva.tipoReserva.color}26`, color: reserva.tipoReserva.color }
 }
 function textoBadgeTipo(reserva: Reserva) {
-   return reserva.cancelada ? 'Cancelada' : reserva.tipoReserva.nombre
+   return reserva.suspendida ? 'Suspendida' : reserva.tipoReserva.nombre
 }
 function horaConSufijo(horaISO: string) {
    return `${horaDeISO(horaISO)} hrs.`
@@ -695,26 +719,48 @@ function abrirDetalle(reserva: Reserva) {
    modalDetalleMostrar.value = true
 }
 
-/* ── Cancelar / reactivar reserva ─────────────────────────────────────────
-   A diferencia de borrar, no elimina la fila: solo alterna `cancelada`. Solo afecta esta
-   ocurrencia puntual — cancelar una reserva recurrente no toca el resto de la serie. */
-const cancelando = ref(false)
+/* ── Suspender / reactivar reserva ─────────────────────────────────────────
+   A diferencia de borrar, no elimina la fila: solo alterna `suspendida`. Solo afecta esta
+   ocurrencia puntual — suspender una reserva recurrente no toca el resto de la serie. Reactivar
+   no pide confirmación (deshace el estado, sin efecto destructivo); suspender sí, porque la
+   reserva pasa a mostrarse destacada en rojo en la grilla, el reporte impreso y la pantalla
+   pública. */
+const suspendiendo = ref(false)
+const confirmSuspenderMostrar = ref(false)
+const reservaASuspender = ref<Reserva | null>(null)
 
-async function alternarCancelada(reserva: Reserva) {
-   cancelando.value = true
+function abrirSuspender(reserva: Reserva) {
+   if (reserva.suspendida) {
+      alternarSuspendida(reserva)
+      return
+   }
+   reservaASuspender.value = reserva
+   confirmSuspenderMostrar.value = true
+}
+
+async function confirmarSuspender() {
+   if (!reservaASuspender.value) return
+   const ok = await alternarSuspendida(reservaASuspender.value)
+   if (ok) confirmSuspenderMostrar.value = false
+}
+
+async function alternarSuspendida(reserva: Reserva): Promise<boolean> {
+   suspendiendo.value = true
    try {
-      await $fetch(`/api/reservas/${reserva.id}/cancelar`, { method: 'PATCH' })
+      await $fetch(`/api/reservas/${reserva.id}/suspender`, { method: 'PATCH' })
       await refrescarReservas()
       toast.add({
-         title: reserva.cancelada ? 'Reserva reactivada' : 'Reserva cancelada',
+         title: reserva.suspendida ? 'Reserva reactivada' : 'Reserva suspendida',
          color: 'success',
          icon: 'i-lucide-check-circle',
       })
+      return true
    } catch (e: unknown) {
       const mensaje = (e as { data?: { message?: string } }).data?.message ?? 'Error al actualizar la reserva'
       toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
+      return false
    } finally {
-      cancelando.value = false
+      suspendiendo.value = false
    }
 }
 
@@ -1026,12 +1072,14 @@ const itemsMenuContextual = computed(() => {
       if (puedeEditarReserva(reserva)) {
          gestion.push({ label: 'Editar reserva', icon: 'i-lucide-pen', onSelect: () => abrirEditar(reserva) })
       }
-      if (puedeModificar) {
+      if (puedeSuspenderReserva(reserva)) {
          gestion.push({
-            label: reserva.cancelada ? 'Reactivar reserva' : 'Cancelar reserva',
-            icon: reserva.cancelada ? 'i-lucide-rotate-ccw' : 'i-lucide-ban',
-            onSelect: () => alternarCancelada(reserva),
+            label: reserva.suspendida ? 'Reactivar reserva' : 'Suspender reserva',
+            icon: reserva.suspendida ? 'i-lucide-rotate-ccw' : 'i-lucide-ban',
+            onSelect: () => abrirSuspender(reserva),
          })
+      }
+      if (puedeModificar) {
          gestion.push({
             label: 'Borrar reserva',
             icon: 'i-lucide-trash-2',
@@ -1092,9 +1140,9 @@ function mismaActividad(a: Reserva, b: Reserva) {
       a.titulo === b.titulo &&
       a.tipoReservaId === b.tipoReservaId &&
       a.personaId === b.personaId &&
-      // Si solo un bloque de una clase de varias horas se cancela, no puede fundirse con el
-      // resto en un solo recuadro: se perdería justo el dato de cuál bloque es el cancelado.
-      a.cancelada === b.cancelada
+      // Si solo un bloque de una clase de varias horas se suspende, no puede fundirse con el
+      // resto en un solo recuadro: se perdería justo el dato de cuál bloque está suspendido.
+      a.suspendida === b.suspendida
    )
 }
 
@@ -1222,7 +1270,7 @@ function carreraDe(reserva: Reserva) {
 // se toma uno de la misma paleta a partir de su identificador: no es aleatorio, el mismo
 // paralelo sale siempre del mismo color, así el reporte no cambia entre impresiones.
 function colorImpresion(reserva: Reserva) {
-   if (reserva.cancelada) return COLOR_CANCELADA
+   if (reserva.suspendida) return COLOR_SUSPENDIDA
    if (!esClase(reserva)) return reserva.tipoReserva.color
    const paralelo = reserva.sesionParalelo?.paralelo
    if (paralelo?.color) return paralelo.color
@@ -1541,7 +1589,7 @@ watch(editandoAlgo, async (ocupado) => {
                                           </div>
                                           <span
                                              class="flex min-w-0 items-start gap-1 text-xs font-bold"
-                                             :class="rp.reserva.cancelada ? 'line-through opacity-70' : ''"
+                                             :class="rp.reserva.suspendida ? 'line-through opacity-70' : ''"
                                           >
                                              <UIcon
                                                 v-if="rp.reserva.serieId"
@@ -1731,11 +1779,11 @@ watch(editandoAlgo, async (ocupado) => {
                         No es pública
                      </span>
                      <span
-                        v-if="reservaSeleccionada.cancelada"
+                        v-if="reservaSeleccionada.suspendida"
                         class="inline-flex shrink-0 items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-xs font-normal text-error"
                      >
                         <UIcon name="i-lucide-ban" class="size-3" />
-                        Cancelada
+                        Suspendida
                      </span>
                   </p>
                </div>
@@ -1820,14 +1868,14 @@ watch(editandoAlgo, async (ocupado) => {
                Editar
             </UButton>
             <UButton
-               v-if="reservaSeleccionada && puedeModificarReserva(reservaSeleccionada)"
+               v-if="reservaSeleccionada && puedeSuspenderReserva(reservaSeleccionada)"
                color="warning"
                variant="subtle"
-               :icon="reservaSeleccionada.cancelada ? 'i-lucide-rotate-ccw' : 'i-lucide-ban'"
-               :loading="cancelando"
-               @click="alternarCancelada(reservaSeleccionada!)"
+               :icon="reservaSeleccionada.suspendida ? 'i-lucide-rotate-ccw' : 'i-lucide-ban'"
+               :loading="suspendiendo"
+               @click="abrirSuspender(reservaSeleccionada!)"
             >
-               {{ reservaSeleccionada.cancelada ? 'Reactivar reserva' : 'Cancelar reserva' }}
+               {{ reservaSeleccionada.suspendida ? 'Reactivar reserva' : 'Suspender reserva' }}
             </UButton>
             <UButton
                v-if="reservaSeleccionada && puedeModificarReserva(reservaSeleccionada)"
@@ -1839,6 +1887,28 @@ watch(editandoAlgo, async (ocupado) => {
             </UButton>
          </template>
       </UModal>
+
+      <!-- Confirmar suspensión de reserva -->
+      <ConfirmModal
+         v-model:open="confirmSuspenderMostrar"
+         title="Suspender reserva"
+         confirm-label="Suspender"
+         confirm-icon="i-lucide-ban"
+         confirm-color="warning"
+         :loading="suspendiendo"
+         @confirm="confirmarSuspender"
+      >
+         <p class="text-sm text-usm-text dark:text-slate-200">
+            ¿Suspender la reserva
+            <span class="font-semibold">{{ reservaASuspender?.titulo }}</span>
+            del
+            {{
+               reservaASuspender
+                  ? formatFechaDisplay(new Date(`${reservaASuspender.fecha.slice(0, 10)}T00:00:00`))
+                  : ''
+            }}? Queda destacada en rojo en la grilla, el reporte impreso y la pantalla pública, pero no se borra.
+         </p>
+      </ConfirmModal>
 
       <!-- Confirmar borrado de reserva -->
       <ConfirmModal
@@ -2119,12 +2189,12 @@ watch(editandoAlgo, async (ocupado) => {
                            :key="entrada.reserva.id"
                            class="leading-tight not-last:mb-1 not-last:border-b not-last:border-dashed not-last:border-[#d4d4d4] not-last:pb-1"
                         >
-                           <p v-if="entrada.reserva.cancelada" class="font-bold wrap-break-word text-black">
-                              CANCELADA
+                           <p v-if="entrada.reserva.suspendida" class="font-bold wrap-break-word text-black">
+                              SUSPENDIDA
                            </p>
                            <p
                               class="font-semibold wrap-break-word text-black"
-                              :class="entrada.reserva.cancelada ? 'line-through' : ''"
+                              :class="entrada.reserva.suspendida ? 'line-through' : ''"
                            >
                               {{ entrada.reserva.titulo }}
                            </p>

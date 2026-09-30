@@ -75,10 +75,10 @@ export interface Reserva {
    // Si la reserva se muestra en vistas de cara al público: la vista impresa de
    // /reservas/horario y la pantalla pública (/pantallas/<codigo>).
    publica: boolean
-   // Cancelada: no se borra (sigue tomando la sala en la BD), pero se destaca en rojo y con la
-   // etiqueta "Cancelada" en vez de mostrarse como una reserva normal. Solo afecta esta
+   // Suspendida: no se borra (sigue tomando la sala en la BD), pero se destaca en rojo y con la
+   // etiqueta "Suspendida" en vez de mostrarse como una reserva normal. Solo afecta esta
    // ocurrencia puntual, nunca la serie recurrente completa.
-   cancelada: boolean
+   suspendida: boolean
    sala: { codigo: string; capacidad: number }
    persona: { id: number; nombre: string; apellido: string } | null
    tipoReserva: TipoReserva

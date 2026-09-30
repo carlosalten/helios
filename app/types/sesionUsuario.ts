@@ -27,6 +27,10 @@ export interface SesionUsuario {
    // server/api/personas/[id]/rol.patch.ts. Administrador tiene bypass total (igual que en
    // requierePermiso), sin importar este valor.
    jerarquiaRol?: number
+   // Rol.suspenderCualquierReserva al momento de iniciar sesión — si puede suspender/reactivar
+   // cualquier reserva en /reservas/horario, no solo las propias (administrable desde
+   // /configuracion). Ver server/utils/alcanceReservas.ts (`puedeSuspenderReserva`).
+   puedeSuspenderCualquierReserva?: boolean
    // Id de la Persona detrás de la sesión — permite al frontend comparar `Reserva.personaId`
    // para saber si una reserva es propia sin otro fetch (ver reservas/horario.vue).
    personaId?: number

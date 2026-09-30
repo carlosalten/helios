@@ -45,7 +45,7 @@ export interface ClasePantalla {
    inicio: string
    fin: string
    responsable: string | null
-   cancelada: boolean
+   suspendida: boolean
 }
 
 export interface DatosPantallaPublica {

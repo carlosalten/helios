@@ -325,7 +325,7 @@ function fusionarClasesContiguas(reservasDia: Reserva[]): Reserva[] {
          const bloqueActual = bloqueNumeroDe(r.inicio)
          const esContiguo =
             actual && bloqueAnterior != null && bloqueActual != null && bloqueActual === bloqueAnterior + 1
-         if (esContiguo && actual!.cancelada === r.cancelada) {
+         if (esContiguo && actual!.suspendida === r.suspendida) {
             actual = { ...actual!, fin: r.fin }
          } else {
             if (actual) fusionadas.push(actual)
@@ -438,9 +438,9 @@ function claseCeldaDia(diaValor: number, franja: Franja) {
    return 'bg-default'
 }
 
-const COLOR_CANCELADA = '#C8102E'
+const COLOR_SUSPENDIDA = '#C8102E'
 function estiloReserva(reserva: Reserva) {
-   if (reserva.cancelada) return { borderColor: COLOR_CANCELADA, backgroundColor: `${COLOR_CANCELADA}33` }
+   if (reserva.suspendida) return { borderColor: COLOR_SUSPENDIDA, backgroundColor: `${COLOR_SUSPENDIDA}33` }
    return { borderColor: reserva.tipoReserva.color, backgroundColor: `${reserva.tipoReserva.color}1A` }
 }
 function estiloPosicion(rp: ReservaPosicionada) {
@@ -452,11 +452,11 @@ function estiloPosicion(rp: ReservaPosicionada) {
    }
 }
 function estiloBadgeTipo(reserva: Reserva) {
-   if (reserva.cancelada) return { backgroundColor: `${COLOR_CANCELADA}26`, color: COLOR_CANCELADA }
+   if (reserva.suspendida) return { backgroundColor: `${COLOR_SUSPENDIDA}26`, color: COLOR_SUSPENDIDA }
    return { backgroundColor: `${reserva.tipoReserva.color}26`, color: reserva.tipoReserva.color }
 }
 function textoBadgeTipo(reserva: Reserva) {
-   return reserva.cancelada ? 'Cancelada' : reserva.tipoReserva.nombre
+   return reserva.suspendida ? 'Suspendida' : reserva.tipoReserva.nombre
 }
 
 // Nombre de la asignatura cuando la reserva es una clase — mismo criterio que
@@ -599,7 +599,13 @@ function horarioInvalido(
 const MENSAJE_HORARIO_INVALIDO = 'Debe ser posterior al de inicio'
 
 const horarioInvalidoCrear = computed(() =>
-   horarioInvalido(formCrear.modoHorario, bloqueInicioSel.value, bloqueTerminoSel.value, formCrear.inicio, formCrear.fin)
+   horarioInvalido(
+      formCrear.modoHorario,
+      bloqueInicioSel.value,
+      bloqueTerminoSel.value,
+      formCrear.inicio,
+      formCrear.fin
+   )
 )
 
 const puedeEnviarCrear = computed(() => {
@@ -1017,7 +1023,7 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                                        </div>
                                        <span
                                           class="inline-flex min-w-0 items-center gap-1 truncate text-xs font-bold"
-                                          :class="rp.reserva.cancelada ? 'line-through opacity-70' : ''"
+                                          :class="rp.reserva.suspendida ? 'line-through opacity-70' : ''"
                                        >
                                           <UIcon
                                              v-if="rp.reserva.serieId"
@@ -1128,7 +1134,10 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                      :content="false"
                   />
                </UFormField>
-               <UFormField :label="formCrear.frecuencia === 'semestre' ? 'Fecha de la primera ayudantía' : 'Fecha'" name="fecha">
+               <UFormField
+                  :label="formCrear.frecuencia === 'semestre' ? 'Fecha de la primera ayudantía' : 'Fecha'"
+                  name="fecha"
+               >
                   <UInput v-model="formCrear.fecha" type="date" class="w-full" />
                </UFormField>
                <UFormField
@@ -1238,11 +1247,11 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                         Recurrente
                      </span>
                      <span
-                        v-if="reservaSeleccionada.cancelada"
+                        v-if="reservaSeleccionada.suspendida"
                         class="inline-flex shrink-0 items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-xs font-normal text-error"
                      >
                         <UIcon name="i-lucide-ban" class="size-3" />
-                        Cancelada
+                        Suspendida
                      </span>
                   </p>
                   <p v-if="reservaSeleccionada.subtitulo" class="text-usm-text-muted dark:text-slate-400">

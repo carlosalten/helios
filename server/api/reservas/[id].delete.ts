@@ -1,4 +1,4 @@
-// "Cancelar reserva": borra la fila directamente, sin marcar un estado. La constraint
+// "Borrar reserva": borra la fila directamente, sin marcar un estado. La constraint
 // `reserva_sin_solapamiento` deja de considerar esa reserva de inmediato.
 export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [

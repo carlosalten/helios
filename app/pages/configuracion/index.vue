@@ -92,6 +92,25 @@ async function toggleRolHorario(rol: Rol) {
       togglingRol.value = null
    }
 }
+
+/* ── Roles que pueden suspender cualquier reserva en /reservas/horario ──── */
+const togglingRolSuspender = ref<number | null>(null)
+
+async function toggleRolSuspender(rol: Rol) {
+   if (togglingRolSuspender.value) return
+   togglingRolSuspender.value = rol.id
+   try {
+      const { suspenderCualquierReserva } = await $fetch<{ suspenderCualquierReserva: boolean }>(
+         `/api/configuracion/roles/${rol.id}/toggle-suspender`,
+         { method: 'POST' }
+      )
+      rol.suspenderCualquierReserva = suspenderCualquierReserva
+   } catch {
+      toast.add({ title: 'Error al actualizar el rol', color: 'error', icon: 'i-lucide-alert-circle' })
+   } finally {
+      togglingRolSuspender.value = null
+   }
+}
 </script>
 
 <template>
@@ -208,6 +227,42 @@ async function toggleRolHorario(rol: Rol) {
                   :disabled="togglingRol !== null || !puedeEditar"
                   :ui="{ base: togglingRol === rol.id ? 'opacity-50' : '' }"
                   @update:model-value="toggleRolHorario(rol)"
+               />
+            </div>
+         </div>
+      </div>
+
+      <div class="space-y-4">
+         <div>
+            <h3 class="text-sm font-semibold text-usm-text dark:text-white">
+               Roles que pueden suspender cualquier reserva
+            </h3>
+            <p class="mt-1 text-sm text-usm-text-muted dark:text-slate-400">
+               Marca qué roles pueden suspender o reactivar <strong>cualquier</strong> reserva en
+               <strong>/reservas/horario</strong>, no solo las propias. Los roles sin marcar solo pueden suspender lo
+               que ya podían modificar antes (las propias, o el alcance más amplio que ya tengan por otro motivo).
+            </p>
+         </div>
+
+         <TableSkeleton v-if="statusRoles === 'pending'" :rows="4" />
+
+         <EmptyState v-else-if="!roles?.length" icon="i-lucide-user-round" message="No hay roles registrados." />
+
+         <div v-else class="overflow-hidden rounded-2xl border border-default bg-default divide-y divide-default">
+            <div
+               v-for="rol in roles"
+               :key="rol.id"
+               class="flex items-center gap-4 px-4 py-3 transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-slate-800"
+            >
+               <p class="min-w-0 flex-1 truncate text-sm font-medium text-usm-text dark:text-white">
+                  {{ rol.nombre }}
+               </p>
+
+               <UCheckbox
+                  :model-value="rol.suspenderCualquierReserva"
+                  :disabled="togglingRolSuspender !== null || !puedeEditar"
+                  :ui="{ base: togglingRolSuspender === rol.id ? 'opacity-50' : '' }"
+                  @update:model-value="toggleRolSuspender(rol)"
                />
             </div>
          </div>

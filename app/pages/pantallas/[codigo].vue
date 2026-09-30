@@ -205,15 +205,15 @@ function colorDe(clase: ClasePantalla) {
                         v-for="clase in clasesVista"
                         :key="clase.id"
                         class="rounded-xl border border-s-4 p-4"
-                        :class="clase.cancelada ? 'border-red-500 bg-red-500/10' : 'border-white/15 bg-white/8'"
-                        :style="clase.cancelada ? {} : { borderInlineStartColor: colorDe(clase) }"
+                        :class="clase.suspendida ? 'border-red-500 bg-red-500/10' : 'border-white/15 bg-white/8'"
+                        :style="clase.suspendida ? {} : { borderInlineStartColor: colorDe(clase) }"
                      >
                         <div
-                           v-if="clase.cancelada"
+                           v-if="clase.suspendida"
                            class="mb-2 flex items-center gap-1.5 rounded-lg bg-red-500 px-2.5 py-1 text-sm font-bold text-white"
                         >
                            <UIcon name="i-lucide-ban" class="size-4 shrink-0" />
-                           Cancelada
+                           Suspendida
                         </div>
                         <div class="mb-2 flex items-start justify-between gap-3">
                            <div class="flex flex-wrap items-center gap-2">
@@ -239,7 +239,7 @@ function colorDe(clase: ClasePantalla) {
                         </div>
                         <p
                            class="truncate text-xl font-bold text-white"
-                           :class="clase.cancelada ? 'line-through opacity-70' : ''"
+                           :class="clase.suspendida ? 'line-through opacity-70' : ''"
                         >
                            {{ (clase.esClase && clase.asignaturaNombre) || clase.subtitulo || clase.titulo }}
                         </p>
