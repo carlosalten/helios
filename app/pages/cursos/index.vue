@@ -311,7 +311,7 @@ const errorGuardar = ref<string | null>(null)
 
 function abrirCrear() {
    formCrear.nombre = ''
-   formCrear.numero = 1
+   formCrear.numero = 300
    formCrear.numeroSemestre = 1
    const planDelFiltro =
       filtroPlan.value != null && planesDisponibles.value?.some((p) => p.id === filtroPlan.value)
@@ -717,6 +717,7 @@ async function confirmarEliminar() {
                         :model-value="String(formCrear.numero)"
                         type="number"
                         min="1"
+                        placeholder="300"
                         class="w-full"
                         @update:model-value="formCrear.numero = Number($event)"
                      />
