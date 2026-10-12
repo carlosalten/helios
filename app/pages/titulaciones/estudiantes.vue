@@ -513,9 +513,11 @@ async function procesarCargaMasiva() {
          </UTable>
       </div>
 
-      <div v-if="estudiantesFiltrados.length > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="estudiantesFiltrados.length" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla
+         v-model:page="paginaActual"
+         v-model:por-pagina="porPagina"
+         :total="estudiantesFiltrados.length"
+      />
 
       <!-- Modal crear -->
       <UModal v-model:open="modalCrearMostrar" title="Nuevo estudiante" :ui="{ footer: 'justify-end' }">

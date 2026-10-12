@@ -1,5 +1,5 @@
 // Alterna si las personas de un rol pueden suspender/reactivar CUALQUIER reserva en
-// /reservas/horario, no solo las propias (Rol.suspenderCualquierReserva) — ver
+// /horario/salas-semanal, no solo las propias (Rol.suspenderCualquierReserva) — ver
 // server/utils/alcanceReservas.ts (`puedeSuspenderReserva`). Igual que el toggle de
 // mostrarEnHorarioProfesores, sin alcance por carrera que chequear: los roles son globales.
 export default defineEventHandler(async (event) => {

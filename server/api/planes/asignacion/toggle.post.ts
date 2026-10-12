@@ -34,6 +34,19 @@ export default defineEventHandler(async (event) => {
       return { asignado: false }
    }
 
+   // Una equivalente de este plan no puede pasar a ser además asignatura de su malla (ver
+   // AsignaturaPlanEquivalente): primero hay que quitar la equivalencia.
+   const comoEquivalente = await prisma.asignaturaPlanEquivalente.findUnique({
+      where: { planId_asignaturaId: { planId, asignaturaId } },
+      include: { asignaturaPlan: { include: { asignatura: { select: { codigo: true } } } } },
+   })
+   if (comoEquivalente) {
+      throw createError({
+         statusCode: 409,
+         message: `${asignatura.codigo} es equivalente a ${comoEquivalente.asignaturaPlan.asignatura.codigo} en este plan. Quita esa equivalencia en Asignaturas → Equivalencias antes de agregarla a la malla.`,
+      })
+   }
+
    const orden = await siguienteOrdenAsignaturaPlan(planId, semestre, esElectiva)
    await prisma.asignaturaPlan.create({ data: { planId, asignaturaId, semestre, esElectiva, orden } })
    return { asignado: true }

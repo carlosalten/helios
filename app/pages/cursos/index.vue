@@ -29,8 +29,19 @@ function labelPlan(plan: { numero: number; carrera: { nombre: string } }) {
 const opcionesPlanCrear = computed(() =>
    (planesDisponibles.value ?? []).map((p) => ({ label: labelPlan(p), value: p.id }))
 )
-const opcionesSemestre = computed(() => (semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })))
-const semestreVigente = computed(() => (semestres.value ?? []).find((s) => s.vigente) ?? null)
+const { esSemestreSeleccionable, semestrePorDefecto } = useVisibilidadSemestre()
+const opcionesSemestre = computed(() =>
+   (semestres.value ?? []).filter(esSemestreSeleccionable).map((s) => ({ label: s.nombre, value: s.id }))
+)
+// Al editar, conserva el semestre ya asignado en las opciones aunque esté oculto — si no, el
+// USelect quedaría con un `value` que no está en `items` y mostraría el ID crudo en vez del
+// nombre del semestre.
+const opcionesSemestreEditar = computed(() =>
+   (semestres.value ?? [])
+      .filter((s) => esSemestreSeleccionable(s) || s.id === formEditar.semestreId)
+      .map((s) => ({ label: s.nombre, value: s.id }))
+)
+const semestrePredeterminado = computed(() => semestrePorDefecto(semestres.value ?? []))
 
 const { puedeCrear, puedeEditar, puedeBorrar } = usePermiso('/cursos')
 const { tieneAlcanceSobreCarrera } = useAlcanceCarrera()
@@ -59,7 +70,7 @@ const opcionesFiltroPlan = computed(() => {
 })
 
 const filtroPlan = ref<number>()
-const filtroSemestre = ref<number | '__todos__'>(semestreVigente.value?.id ?? '__todos__')
+const filtroSemestre = ref<number | '__todos__'>(semestrePredeterminado.value?.id ?? '__todos__')
 
 // También corrige el filtro si el plan seleccionado deja de tener cursos (p. ej. se borró el
 // último): si no, el USelect queda con un `value` que ya no está en `items` y muestra el ID
@@ -311,7 +322,7 @@ const errorGuardar = ref<string | null>(null)
 
 function abrirCrear() {
    formCrear.nombre = ''
-   formCrear.numero = 1
+   formCrear.numero = 300
    formCrear.numeroSemestre = 1
    const planDelFiltro =
       filtroPlan.value != null && planesDisponibles.value?.some((p) => p.id === filtroPlan.value)
@@ -322,7 +333,7 @@ function abrirCrear() {
       filtroSemestre.value !== '__todos__' && semestres.value?.some((s) => s.id === filtroSemestre.value)
          ? filtroSemestre.value
          : undefined
-   formCrear.semestreId = semestreDelFiltro ?? semestreVigente.value?.id ?? semestres.value?.[0]?.id ?? 0
+   formCrear.semestreId = semestreDelFiltro ?? semestrePredeterminado.value?.id ?? opcionesSemestre.value[0]?.value ?? 0
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -534,9 +545,11 @@ async function confirmarEliminar() {
                </UTable>
             </div>
 
-            <div v-if="cursosFiltrados.length > porPagina" class="flex justify-center">
-               <UPagination v-model:page="paginaActual" :total="cursosFiltrados.length" :items-per-page="porPagina" />
-            </div>
+            <PaginacionTabla
+               v-model:page="paginaActual"
+               v-model:por-pagina="porPagina"
+               :total="cursosFiltrados.length"
+            />
          </div>
 
          <!-- Panel de detalle del curso seleccionado -->
@@ -582,7 +595,7 @@ async function confirmarEliminar() {
                            <p class="font-medium text-usm-text dark:text-white">
                               {{ paralelo.asignaturaCodigo }} · {{ paralelo.asignaturaNombre }}
                            </p>
-                           <UBadge variant="subtle" color="neutral" class="shrink-0"
+                           <UBadge variant="subtle" color="primary" class="shrink-0"
                               >Paralelo {{ paralelo.codigo }}</UBadge
                            >
                         </div>
@@ -717,6 +730,7 @@ async function confirmarEliminar() {
                         :model-value="String(formCrear.numero)"
                         type="number"
                         min="1"
+                        placeholder="300"
                         class="w-full"
                         @update:model-value="formCrear.numero = Number($event)"
                      />
@@ -761,7 +775,12 @@ async function confirmarEliminar() {
                   <USelect v-model="formEditar.planId" :items="opcionesPlanCrear" value-key="value" class="w-full" />
                </UFormField>
                <UFormField label="Semestre" name="semestreId">
-                  <USelect v-model="formEditar.semestreId" :items="opcionesSemestre" value-key="value" class="w-full" />
+                  <USelect
+                     v-model="formEditar.semestreId"
+                     :items="opcionesSemestreEditar"
+                     value-key="value"
+                     class="w-full"
+                  />
                </UFormField>
                <UFormField label="Nombre" name="nombre" :error="errorEditar ?? undefined">
                   <UInput v-model="formEditar.nombre" class="w-full" />

@@ -90,20 +90,21 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 - **`plan_cantidad_semestres_rango`** — en `plan`, `cantidad_semestres` entre 4 y 12 (default 4).
 - **`curso_numero_positivo`** — en `curso`, `numero >= 1`.
 - **`tt_grupo_numero_positivo`** — en `tt_grupo`, `numero >= 1`. Además, `numero` es único junto con `proceso_id` (`tt_grupo_proceso_id_numero_key`): no se puede repetir dentro del mismo proceso, pero sí entre procesos distintos.
+- **`persona_registros_por_pagina_valido`** — en `persona`, `registros_por_pagina` ∈ {10, 20, 30, 40, 50} (default 20; mismas opciones que `OPCIONES_REGISTROS_POR_PAGINA`).
 - **`curso_numero_semestre_rango`** — en `curso`, `numero_semestre` entre 1 y 12.
 - **`paralelo_cupo_rango`** — en `paralelo`, `cupo` entre 0 y 100.
 - **`feriado_horas_validas`** — en `feriado`, `hora_inicio`/`hora_termino` van ambos `null` (feriado de día completo) o ambos con valor y `hora_termino > hora_inicio` (feriado parcial).
-- **`asignatura_equivalencia_no_refleja`** — en `asignatura_equivalencia`, `asignatura_id <> equivalente_id` (una asignatura no puede ser equivalente a sí misma).
+- **`asignatura_plan_equivalente_plan_id_asignatura_id_key`** — índice único en `asignatura_plan_equivalente` (`plan_id`, `asignatura_id`): dentro de un plan, una asignatura es equivalente a lo más a una asignatura de la malla. Las equivalencias son por plan y dirigidas (ya no existe la tabla global `asignatura_equivalencia`); que la equivalente no sea la propia asignatura ni otra de la malla se valida en `server/api/asignaturas/equivalencias/toggle.post.ts`.
 - **`tt_profesor_cupo_maximo_positivo`** — en `tt_profesor`, `cupo_maximo >= 1`.
 - **`tt_comision_propuesta_id_guia_key`** — índice único parcial en `tt_comision` (`propuesta_id`) `WHERE rol = 'Guía'`: una propuesta no puede tener más de un profesor guía asignado a la vez (sí puede tener varias filas de comisión con otros roles).
 
 > Estas constraints se crearon con migraciones SQL a mano y **no** están representadas en `schema.prisma` (Prisma no modela CHECK/EXCLUDE). Un `prisma migrate reset` las reconstruye porque siguen en `prisma/migrations/`, pero `prisma migrate diff` contra el datamodel las reporta como "drift" esperado.
 
-> `Reserva` **permite intencionalmente** horario solapado (no existe una constraint `reserva_sin_solapamiento`): en `/reservas/horario`, las reservas que se solapan en el tiempo para una misma sala se agrupan en columnas una al lado de la otra en vez de rechazarse.
+> `Reserva` **permite intencionalmente** horario solapado (no existe una constraint `reserva_sin_solapamiento`): en `/horario/salas-semanal`, las reservas que se solapan en el tiempo para una misma sala se agrupan en columnas una al lado de la otra en vez de rechazarse.
 
-> `Reserva.suspendida` (`PATCH /api/reservas/:id/suspender`) marca una ocurrencia puntual como suspendida **sin borrar la fila** — sigue tomando la sala en la BD, pero se destaca en rojo (`#C8102E`) en `/reservas/horario` (grilla interactiva e impresión) y en la pantalla pública (`/pantallas/<codigo>`, con la etiqueta "Suspendida"). Solo afecta esa ocurrencia: no tiene el flujo "esta y las siguientes" que sí tienen editar/borrar — suspender una serie recurrente completa es ocurrencia por ocurrencia. Borrar (`DELETE /api/reservas/:id`) sigue siendo una operación aparte, que sí elimina la fila.
+> `Reserva.suspendida` (`PATCH /api/reservas/:id/suspender`) marca una ocurrencia puntual como suspendida **sin borrar la fila** — sigue tomando la sala en la BD, pero se destaca en rojo (`#C8102E`) en `/horario/salas-semanal` (grilla interactiva e impresión) y en la pantalla pública (`/pantallas/<codigo>`, con la etiqueta "Suspendida"). Solo afecta esa ocurrencia: no tiene el flujo "esta y las siguientes" que sí tienen editar/borrar — suspender una serie recurrente completa es ocurrencia por ocurrencia. Borrar (`DELETE /api/reservas/:id`) sigue siendo una operación aparte, que sí elimina la fila.
 
-> `Reserva.publica` (default `true`) controla si la reserva se muestra en vistas de cara al público: la vista impresa de `/reservas/horario` y la pantalla pública (`/pantallas/<codigo>`). En `false` la reserva sigue tomando la sala en la BD y se ve igual que cualquier otra en la grilla interactiva de `/reservas/horario`, pero queda fuera del reporte en papel y de `/pantallas/<codigo>` — para bloqueos internos (p. ej. mantenimiento) que no corresponde anunciar.
+> `Reserva.publica` (default `true`) controla si la reserva se muestra en vistas de cara al público: la vista impresa de `/horario/salas-semanal` y la pantalla pública (`/pantallas/<codigo>`). En `false` la reserva sigue tomando la sala en la BD y se ve igual que cualquier otra en la grilla interactiva de `/horario/salas-semanal`, pero queda fuera del reporte en papel y de `/pantallas/<codigo>` — para bloqueos internos (p. ej. mantenimiento) que no corresponde anunciar.
 
 ## Backend — API Nitro
 
@@ -115,13 +116,23 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 
 ### Control de acceso por rol (real)
 
-Hay control de acceso por rol basado en la tabla `permiso` (`rol` + `ruta` + `accion`):
+Hay control de acceso por rol basado en la tabla `permiso` (`rol` + `ruta` + `accion`). El guard **no confía en la sesión**: en cada request relee la persona desde la BD (`server/utils/permisos.ts`):
 
 ```ts
-export async function requierePermiso(event, ruta, accion) {
+// Resumen de server/utils/permisos.ts
+async function usuarioActualizado(event) {
    const { user } = await getUserSession(event)
    if (!user) throw createError({ statusCode: 401 })
-   const usuario = user as { email: string; rol: string }
+   const persona = await prisma.persona.findUnique({ where: { email: user.email }, include: { rol: true } })
+   if (!persona || !persona.activo) {
+      await clearUserSession(event) // cuenta borrada o bloqueada: la sesión deja de valer
+      throw createError({ statusCode: 401 })
+   }
+   return { email, rol: persona.rol.nombre, jerarquiaRol: persona.rol.jerarquia, nombre, apellido }
+}
+
+export async function requierePermiso(event, ruta, accion) {
+   const usuario = await usuarioActualizado(event)
    if (usuario.rol === 'Administrador') return usuario // bypass total
    const permiso = await prisma.permiso.findUnique({
       where: { rol_ruta_accion: { rol: usuario.rol, ruta, accion } },
@@ -131,16 +142,19 @@ export async function requierePermiso(event, ruta, accion) {
 }
 ```
 
+- **Revalidación en cada request**: rol, `activo` y jerarquía salen de la BD, no de la cookie (que dura 8 h). Un bloqueo o un cambio de rol tiene efecto inmediato en el backend, aunque el usuario siga con la sesión abierta.
+- **`requiereAlgunPermiso(event, [[ruta, accion], …])`**: igual, pero basta con cumplir una de las combinaciones. Se usa en endpoints de lectura que alimentan a más de una página (p. ej. `/api/semestres`, `/api/salas`, el stream SSE de `/api/horario/eventos`).
 - **`Administrador`** tiene bypass hardcodeado (nunca se guarda como fila en `permiso`), para no quedar bloqueado por un seed o borrado accidental.
 - El resto de roles (`Director Departamento`, `Jefe de Carrera`, `Profesor`, `Apoyo Docente`) necesitan una fila `(rol, ruta, accion)` para cada acción. El Administrador administra esto desde la página `/permisos`.
 - `'/permisos'` es una ruta protegida pero **no asignable**: solo el Administrador la ve.
 - Acciones: `ver`, `crear`, `editar`, `borrar` (genéricas) y, solo para `/personas/gestion`, las finas `contrasena`, `cambiarrol`, `activar` (gestionan la cuenta de acceso, no solo los datos de la persona).
 - El **login se hace contra `Persona`** (`server/api/auth/login.post.ts`): `Persona.password` es nullable — una persona sin contraseña no tiene cuenta de acceso, solo agenda/reservas. `usuario.rol` en `requierePermiso`/sesión es el nombre de la fila de `Rol` asociada (`persona.rol.nombre`), no un enum fijo en TS.
-- Al hacer login se calculan `permisos` (agrupados por ruta) y, si el rol es `Jefe de Carrera`, `carrerasJefe` (vía `resolverCarrerasJefe`). Ambos se guardan en la sesión Nuxt y se usan en el frontend para ocultar navegación y páginas.
+- Al hacer login se calculan `permisos` y, si el rol es `Jefe de Carrera`, `carrerasJefe` (vía `resolverCarrerasJefe`). Ambos se guardan en la sesión Nuxt y **solo los usa el frontend** para ocultar navegación, páginas y botones: quedan congelados hasta el próximo login (un permiso nuevo exige re-loguearse para verse en la UI), pero el backend no depende de ellos.
+- **Tamaño de la cookie**: nuxt-auth-utils guarda la sesión completa sellada en la cookie, y el navegador la descarta en silencio si pasa de 4096 bytes (el login "no funciona" sin error en el servidor). Por eso `permisos` va **codificado** en la sesión como `string[]` `"ruta:letras"` (p. ej. `"/cursos:vceb"`), con `codificarPermisosSesion` al hacer login y `tienePermisoSesion` para leerlo (`app/types/permiso.ts`; lo usan `usePermiso`, `auth.global.ts` y el sidebar). No leas `user.permisos` a mano, y al agregar campos a la sesión mide la cookie del rol con más permisos.
 
 ### Alcance por carrera (Jefe de Carrera)
 
-`resolverCarrerasJefe(rol, email)` (en `server/utils/carreras.ts`... ver `alcanceCarrera.ts`) devuelve `null` (sin restricción) para todo rol distinto de `Jefe de Carrera`, o `number[]` con los códigos de carrera de los que la persona es jefe. Los endpoints de horario filtran/validan contra ese `carrerasPermitidas`.
+`resolverCarrerasJefe(rol, email)` (en `server/utils/alcanceCarrera.ts`) devuelve `null` (sin restricción) para todo rol distinto de `Jefe de Carrera`, o `number[]` con los códigos de carrera de los que la persona es jefe. Los endpoints de horario filtran/validan contra ese `carrerasPermitidas`.
 
 ### Reglas obligatorias al crear endpoints
 
@@ -175,7 +189,7 @@ runtimeConfig: {
 
 - **Cookie de sesión**: `sameSite: 'lax'`, `httpOnly`, `secure` (prod), `maxAge: 8h`.
 - **Middleware CSRF** (`server/middleware/origen.ts`): rechaza (403) mutaciones cuyo `Origin`/`Referer` no coincida con el host.
-- **Rate-limit** en `server/utils/rateLimit.ts`, usado en el login: por IP (5 intentos / 15 min) y por email (10 fallos / 15 min) → 429.
+- **Anti fuerza bruta en los logins** (`server/utils/limiteLogin.ts`, sobre los contadores en memoria de `server/utils/rateLimit.ts`), ventana de 15 min contando solo fallos: **por cuenta** 10 fallos → 429, y captcha Turnstile desde el 2do intento tras un fallo; **por IP nunca se bloquea** (muchos usuarios comparten la wifi del campus), solo se exige captcha a todos desde esa IP tras 10 fallos. Un login exitoso limpia solo el contador de su cuenta.
 - **Control de acceso por rol** vía `requierePermiso` + tabla `permiso`.
 
 ## Dependencias clave

@@ -1,3 +1,5 @@
+import { tienePermisoSesion } from '~/types/permiso'
+
 // Rutas sin recurso de backend propio: no tienen ruta/accion en ningún microservicio,
 // así que quedan siempre accesibles para cualquier usuario autenticado.
 // '/cuenta/contrasena' y '/cuenta/preferencias' van acá a propósito: cambiar la contraseña o
@@ -39,6 +41,5 @@ export default defineNuxtRouteMiddleware((to) => {
    if (RUTAS_SIN_RESTRICCION.includes(to.path)) return
    if (user.value?.rol === 'Administrador') return
 
-   const tienePermiso = user.value?.permisos?.some((p) => p.ruta === to.path && p.acciones.includes('ver'))
-   if (!tienePermiso) return navigateTo('/')
+   if (!tienePermisoSesion(user.value?.permisos, to.path, 'ver')) return navigateTo('/')
 })

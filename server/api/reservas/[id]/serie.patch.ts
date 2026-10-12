@@ -3,7 +3,7 @@
 // propia fecha — solo la seleccionada puede cambiar de fecha).
 export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [
-      ['/reservas/horario', 'editar'],
+      ['/horario/salas-semanal', 'editar'],
       ['/ayudantias', 'editar'],
    ])
 

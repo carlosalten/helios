@@ -24,8 +24,14 @@ export function resolverHoy(query: Record<string, unknown>): Date {
    return new Date(`${hoy}T00:00:00.000Z`)
 }
 
-export function tituloReservaSesion(paralelo: { codigo: string; asignaturaPlan: { asignatura: { codigo: string } } }) {
-   return `${paralelo.asignaturaPlan.asignatura.codigo} · ${paralelo.codigo}`
+// Usa el código de la equivalente si el paralelo se programó desde una (ver
+// asignaturaVisibleParalelo): es el que se ve en las vistas de horario y en la pantalla pública.
+export function tituloReservaSesion(paralelo: {
+   codigo: string
+   asignaturaEquivalente?: { codigo: string } | null
+   asignaturaPlan: { asignatura: { codigo: string } }
+}) {
+   return `${asignaturaVisibleParalelo(paralelo).codigo} · ${paralelo.codigo}`
 }
 
 // Borra la parte de la reserva recurrente de una sesión de clases que todavía no ocurrió

@@ -98,13 +98,24 @@ const pageIcon = computed(() => {
       >
          <!-- Brand -->
          <div class="flex h-16 shrink-0 items-center gap-3 border-b border-gray-200 px-4 dark:border-slate-800">
-            <div class="flex size-12 shrink-0 items-center justify-center rounded-lg">
-               <NuxtImg src="/images/isotipo-usm.png" format="webp" quality="80" alt="UTFSM" />
-            </div>
-            <div class="min-w-0 leading-tight">
-               <p class="truncate text-sm font-bold text-usm-text dark:text-white">HELIOS</p>
-               <p class="truncate text-xs text-usm-gray dark:text-slate-400">Portal Estudiante</p>
-            </div>
+            <NuxtLink
+               to="/estudiante"
+               class="flex min-w-0 items-center gap-3"
+               aria-label="Ir a Inicio"
+               @click="
+                  () => {
+                     sidebarOpen = false
+                  }
+               "
+            >
+               <div class="flex size-12 shrink-0 items-center justify-center rounded-lg">
+                  <NuxtImg src="/images/isotipo-usm.png" format="webp" quality="80" alt="UTFSM" />
+               </div>
+               <div class="min-w-0 leading-tight">
+                  <p class="truncate text-sm font-bold text-usm-text dark:text-white">HELIOS</p>
+                  <p class="truncate text-xs text-usm-gray dark:text-slate-400">Portal Estudiante</p>
+               </div>
+            </NuxtLink>
             <UButton
                icon="i-lucide-x"
                variant="ghost"

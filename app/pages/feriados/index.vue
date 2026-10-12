@@ -12,10 +12,11 @@ const [{ data: feriados, status, refresh }, { data: semestres }] = await Promise
 ])
 
 const { puedeCrear, puedeEditar, puedeBorrar } = usePermiso('/feriados')
+const { esSemestreSeleccionable, semestrePorDefecto } = useVisibilidadSemestre()
 
-const semestreVigenteId = computed(() => semestres.value?.find((s) => s.vigente)?.id)
+const semestrePredeterminadoId = computed(() => semestrePorDefecto(semestres.value ?? [])?.id)
 
-const filtroSemestre = ref<number | '__todos__'>(semestreVigenteId.value ?? '__todos__')
+const filtroSemestre = ref<number | '__todos__'>(semestrePredeterminadoId.value ?? '__todos__')
 
 const feriadosFiltrados = computed(() => {
    const lista =
@@ -25,9 +26,11 @@ const feriadosFiltrados = computed(() => {
    return [...lista].sort((a, b) => a.fecha.localeCompare(b.fecha))
 })
 
+const semestresVisibles = computed(() => (semestres.value ?? []).filter(esSemestreSeleccionable))
+
 const opcionesSemestre = computed(() => [
    { label: 'Todos los semestres', value: '__todos__' as const },
-   ...(semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })),
+   ...semestresVisibles.value.map((s) => ({ label: s.nombre, value: s.id })),
 ])
 
 const { paginaActual, itemsPagina: feriadosPagina, porPagina } = usePaginacion(feriadosFiltrados)
@@ -97,7 +100,7 @@ const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 
 function abrirCrear() {
-   formCrear.semestreId = semestreVigenteId.value ?? semestres.value?.[0]?.id ?? 0
+   formCrear.semestreId = semestrePredeterminadoId.value ?? semestresVisibles.value[0]?.id ?? 0
    formCrear.fecha = ''
    formCrear.esDiaCompleto = true
    formCrear.horaInicio = ''
@@ -144,6 +147,15 @@ const formEditar = reactive({
    alcance: 'TOTAL' as AlcanceFeriado,
 })
 const errorEditar = ref<string | null>(null)
+
+// Al editar, conserva el semestre ya asignado en las opciones aunque esté oculto — si no, el
+// USelect quedaría con un `value` que no está en `items` y mostraría el ID crudo en vez del
+// nombre del semestre.
+const opcionesSemestreEditar = computed(() =>
+   (semestres.value ?? [])
+      .filter((s) => esSemestreSeleccionable(s) || s.id === formEditar.semestreId)
+      .map((s) => ({ label: s.nombre, value: s.id }))
+)
 
 function abrirEditar(feriado: Feriado) {
    feriadoEditar.value = feriado
@@ -297,9 +309,7 @@ async function confirmarEliminar() {
          </UTable>
       </div>
 
-      <div v-if="feriadosFiltrados.length > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="feriadosFiltrados.length" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="feriadosFiltrados.length" />
 
       <!-- Modal crear -->
       <UModal v-model:open="modalCrearMostrar" title="Nuevo feriado" :ui="{ footer: 'justify-end' }">
@@ -308,7 +318,7 @@ async function confirmarEliminar() {
                <UFormField label="Semestre" name="semestreId">
                   <USelect
                      v-model="formCrear.semestreId"
-                     :items="(semestres ?? []).map((s) => ({ label: s.nombre, value: s.id }))"
+                     :items="semestresVisibles.map((s) => ({ label: s.nombre, value: s.id }))"
                      value-key="value"
                      class="w-full"
                   />
@@ -379,7 +389,7 @@ async function confirmarEliminar() {
                <UFormField label="Semestre" name="semestreId">
                   <USelect
                      v-model="formEditar.semestreId"
-                     :items="(semestres ?? []).map((s) => ({ label: s.nombre, value: s.id }))"
+                     :items="opcionesSemestreEditar"
                      value-key="value"
                      class="w-full"
                   />

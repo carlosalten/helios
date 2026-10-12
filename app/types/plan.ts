@@ -20,4 +20,6 @@ export interface AsignaturaConAsignacion {
    // Si es electiva, va en el cuadro de Electivos en vez de la columna de `semestre`, y en
    // /paralelos/asignacion se puede asignar a un curso de cualquier semestre.
    esElectiva: boolean
+   // Equivalentes de la asignatura en este plan (AsignaturaPlanEquivalente); vacío si no está en el plan.
+   equivalentes: { id: number; codigo: string; nombre: string }[]
 }

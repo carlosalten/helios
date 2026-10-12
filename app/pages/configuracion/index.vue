@@ -93,7 +93,7 @@ async function toggleRolHorario(rol: Rol) {
    }
 }
 
-/* ── Roles que pueden suspender cualquier reserva en /reservas/horario ──── */
+/* ── Roles que pueden suspender cualquier reserva en /horario/salas-semanal ──── */
 const togglingRolSuspender = ref<number | null>(null)
 
 async function toggleRolSuspender(rol: Rol) {
@@ -109,6 +109,25 @@ async function toggleRolSuspender(rol: Rol) {
       toast.add({ title: 'Error al actualizar el rol', color: 'error', icon: 'i-lucide-alert-circle' })
    } finally {
       togglingRolSuspender.value = null
+   }
+}
+
+/* ── Roles que ven el semestre borrador aunque esté oculto ───────────────── */
+const togglingRolVerBorrador = ref<number | null>(null)
+
+async function toggleRolVerBorrador(rol: Rol) {
+   if (togglingRolVerBorrador.value) return
+   togglingRolVerBorrador.value = rol.id
+   try {
+      const { verSemestreBorrador } = await $fetch<{ verSemestreBorrador: boolean }>(
+         `/api/configuracion/roles/${rol.id}/toggle-ver-semestre-borrador`,
+         { method: 'POST' }
+      )
+      rol.verSemestreBorrador = verSemestreBorrador
+   } catch {
+      toast.add({ title: 'Error al actualizar el rol', color: 'error', icon: 'i-lucide-alert-circle' })
+   } finally {
+      togglingRolVerBorrador.value = null
    }
 }
 </script>
@@ -239,7 +258,7 @@ async function toggleRolSuspender(rol: Rol) {
             </h3>
             <p class="mt-1 text-sm text-usm-text-muted dark:text-slate-400">
                Marca qué roles pueden suspender o reactivar <strong>cualquier</strong> reserva en
-               <strong>/reservas/horario</strong>, no solo las propias. Los roles sin marcar solo pueden suspender lo
+               <strong>/horario/salas-semanal</strong>, no solo las propias. Los roles sin marcar solo pueden suspender lo
                que ya podían modificar antes (las propias, o el alcance más amplio que ya tengan por otro motivo).
             </p>
          </div>
@@ -263,6 +282,42 @@ async function toggleRolSuspender(rol: Rol) {
                   :disabled="togglingRolSuspender !== null || !puedeEditar"
                   :ui="{ base: togglingRolSuspender === rol.id ? 'opacity-50' : '' }"
                   @update:model-value="toggleRolSuspender(rol)"
+               />
+            </div>
+         </div>
+      </div>
+
+      <div class="space-y-4">
+         <div>
+            <h3 class="text-sm font-semibold text-usm-text dark:text-white">
+               Roles que ven el semestre borrador oculto
+            </h3>
+            <p class="mt-1 text-sm text-usm-text-muted dark:text-slate-400">
+               Marca qué roles ven el semestre marcado como <strong>borrador</strong> en los selectores de semestre
+               (cursos, bloques horarios, feriados, horario, paralelos, copiar bloques) aunque ese semestre esté marcado
+               como no visible. Administrador lo ve siempre, sin importar esta configuración.
+            </p>
+         </div>
+
+         <TableSkeleton v-if="statusRoles === 'pending'" :rows="4" />
+
+         <EmptyState v-else-if="!roles?.length" icon="i-lucide-user-round" message="No hay roles registrados." />
+
+         <div v-else class="overflow-hidden rounded-2xl border border-default bg-default divide-y divide-default">
+            <div
+               v-for="rol in roles"
+               :key="rol.id"
+               class="flex items-center gap-4 px-4 py-3 transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-slate-800"
+            >
+               <p class="min-w-0 flex-1 truncate text-sm font-medium text-usm-text dark:text-white">
+                  {{ rol.nombre }}
+               </p>
+
+               <UCheckbox
+                  :model-value="rol.verSemestreBorrador"
+                  :disabled="togglingRolVerBorrador !== null || !puedeEditar"
+                  :ui="{ base: togglingRolVerBorrador === rol.id ? 'opacity-50' : '' }"
+                  @update:model-value="toggleRolVerBorrador(rol)"
                />
             </div>
          </div>

@@ -1,12 +1,32 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import type { Semestre } from '~/types/semestre'
+import { SEMESTRES_POR_DEFECTO, type SemestrePorDefecto } from '~/types/preferencias'
 
 const toast = useToast()
+const { user, fetch: fetchSession } = useUserSession()
 
 const { data: semestres, status, refresh } = await useFetch<Semestre[]>('/api/semestres')
 
 const { puedeCrear, puedeEditar, puedeBorrar } = usePermiso('/semestres')
+
+/* ── Semestre por defecto en los selectores (preferencia personal) ───────── */
+const opcionesSemestrePorDefecto = SEMESTRES_POR_DEFECTO.map((o) => ({ label: o.label, value: o.valor }))
+const guardandoSemestrePorDefecto = ref(false)
+
+async function cambiarSemestrePorDefecto(semestrePorDefecto: SemestrePorDefecto) {
+   guardandoSemestrePorDefecto.value = true
+   try {
+      await $fetch('/api/preferencias', { method: 'PATCH', body: { semestrePorDefecto } })
+      await fetchSession()
+      toast.add({ title: 'Semestre por defecto actualizado', color: 'success', icon: 'i-lucide-check-circle' })
+   } catch (e: unknown) {
+      const mensaje = (e as { data?: { message?: string } }).data?.message ?? 'No se pudo guardar la preferencia'
+      toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
+   } finally {
+      guardandoSemestrePorDefecto.value = false
+   }
+}
 
 const busqueda = ref('')
 
@@ -27,12 +47,21 @@ const columnas: TableColumn<Semestre>[] = [
    { id: 'inicio', header: 'Inicio', size: 120 },
    { id: 'fin', header: 'Fin', size: 120 },
    { id: 'vigente', header: 'Vigente', size: 100 },
-   { id: 'acciones', header: '', size: 100 },
+   { id: 'borrador', header: 'Borrador', size: 130 },
+   { id: 'visible', header: 'Visible', size: 100 },
+   { id: 'acciones', header: '', size: 150 },
 ]
 
 /* ── Crear ───────────────────────────────────────────────── */
 const modalCrearMostrar = ref(false)
-const formCrear = reactive({ nombre: '', fechaInicio: '', fechaFin: '', vigente: false })
+const formCrear = reactive({
+   nombre: '',
+   fechaInicio: '',
+   fechaFin: '',
+   vigente: false,
+   borrador: false,
+   visible: true,
+})
 const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 
@@ -41,6 +70,8 @@ function abrirCrear() {
    formCrear.fechaInicio = ''
    formCrear.fechaFin = ''
    formCrear.vigente = false
+   formCrear.borrador = false
+   formCrear.visible = true
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -63,7 +94,14 @@ async function guardar() {
 /* ── Editar ──────────────────────────────────────────────── */
 const modalEditarMostrar = ref(false)
 const semestreEditar = ref<Semestre | null>(null)
-const formEditar = reactive({ nombre: '', fechaInicio: '', fechaFin: '', vigente: false })
+const formEditar = reactive({
+   nombre: '',
+   fechaInicio: '',
+   fechaFin: '',
+   vigente: false,
+   borrador: false,
+   visible: true,
+})
 const errorEditar = ref<string | null>(null)
 
 function abrirEditar(semestre: Semestre) {
@@ -72,6 +110,8 @@ function abrirEditar(semestre: Semestre) {
    formEditar.fechaInicio = semestre.fechaInicio.slice(0, 10)
    formEditar.fechaFin = semestre.fechaFin.slice(0, 10)
    formEditar.vigente = semestre.vigente
+   formEditar.borrador = semestre.borrador
+   formEditar.visible = semestre.visible
    errorEditar.value = null
    modalEditarMostrar.value = true
 }
@@ -107,6 +147,48 @@ async function marcarVigente(semestre: Semestre) {
       toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
    } finally {
       marcandoVigente.value = null
+   }
+}
+
+/* ── Marcar como borrador ─────────────────────────────────── */
+const marcandoBorrador = ref<number | null>(null)
+
+async function marcarBorrador(semestre: Semestre) {
+   marcandoBorrador.value = semestre.id
+   try {
+      await $fetch(`/api/semestres/${semestre.id}/borrador`, { method: 'PATCH' })
+      await refresh()
+      toast.add({
+         title: `${semestre.nombre} marcado como borrador`,
+         color: 'success',
+         icon: 'i-lucide-check-circle',
+      })
+   } catch (e: unknown) {
+      const mensaje = (e as { data?: { message?: string } }).data?.message ?? 'No se pudo marcar como borrador'
+      toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
+   } finally {
+      marcandoBorrador.value = null
+   }
+}
+
+/* ── Alternar visible ────────────────────────────────────── */
+const alternandoVisible = ref<number | null>(null)
+
+async function alternarVisible(semestre: Semestre) {
+   alternandoVisible.value = semestre.id
+   try {
+      await $fetch(`/api/semestres/${semestre.id}/visible`, { method: 'PATCH' })
+      await refresh()
+      toast.add({
+         title: semestre.visible ? `${semestre.nombre} ocultado` : `${semestre.nombre} marcado como visible`,
+         color: 'success',
+         icon: 'i-lucide-check-circle',
+      })
+   } catch (e: unknown) {
+      const mensaje = (e as { data?: { message?: string } }).data?.message ?? 'No se pudo cambiar la visibilidad'
+      toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
+   } finally {
+      alternandoVisible.value = null
    }
 }
 
@@ -149,6 +231,30 @@ async function confirmarEliminar() {
          </UButton>
       </div>
 
+      <div
+         class="flex flex-col gap-3 rounded-2xl border border-default bg-default p-4 sm:flex-row sm:items-center sm:justify-between"
+      >
+         <div class="min-w-0">
+            <p class="text-sm font-medium text-usm-text dark:text-white">Semestre por defecto en los selectores</p>
+            <p class="mt-0.5 text-xs text-usm-text-muted dark:text-slate-400">
+               Preferencia personal: el semestre que se preselecciona en cursos, bloques horarios, feriados, horario y
+               paralelos. Si el borrador no está disponible para ti, se usa el vigente.
+            </p>
+         </div>
+         <div class="w-full sm:w-56 sm:shrink-0">
+            <USelect
+               :model-value="user?.semestrePorDefecto ?? 'VIGENTE'"
+               :items="opcionesSemestrePorDefecto"
+               value-key="value"
+               icon="i-lucide-calendar-check"
+               :loading="guardandoSemestrePorDefecto"
+               :disabled="guardandoSemestrePorDefecto"
+               class="w-full"
+               @update:model-value="cambiarSemestrePorDefecto"
+            />
+         </div>
+      </div>
+
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
          <UInput v-model="busqueda" icon="i-lucide-search" placeholder="Buscar por nombre…" class="sm:w-72" />
          <span class="text-sm text-usm-text-muted dark:text-slate-400">
@@ -178,6 +284,16 @@ async function confirmarEliminar() {
                   {{ row.original.vigente ? 'Vigente' : 'No vigente' }}
                </UBadge>
             </template>
+            <template #borrador-cell="{ row }">
+               <UBadge :color="row.original.borrador ? 'info' : 'neutral'" variant="subtle">
+                  {{ row.original.borrador ? 'Borrador' : 'No' }}
+               </UBadge>
+            </template>
+            <template #visible-cell="{ row }">
+               <UBadge :color="row.original.visible ? 'success' : 'neutral'" variant="subtle">
+                  {{ row.original.visible ? 'Visible' : 'Oculto' }}
+               </UBadge>
+            </template>
             <template #acciones-cell="{ row }">
                <div class="flex justify-end gap-1">
                   <UTooltip v-if="!row.original.vigente" text="Marcar como vigente">
@@ -190,6 +306,30 @@ async function confirmarEliminar() {
                         :disabled="marcandoVigente !== null || !puedeEditar"
                         aria-label="Marcar como vigente"
                         @click="marcarVigente(row.original)"
+                     />
+                  </UTooltip>
+                  <UTooltip v-if="!row.original.borrador" text="Marcar como borrador">
+                     <UButton
+                        icon="i-lucide-wrench"
+                        color="info"
+                        variant="ghost"
+                        size="xs"
+                        :loading="marcandoBorrador === row.original.id"
+                        :disabled="marcandoBorrador !== null || !puedeEditar"
+                        aria-label="Marcar como borrador"
+                        @click="marcarBorrador(row.original)"
+                     />
+                  </UTooltip>
+                  <UTooltip :text="row.original.visible ? 'Ocultar' : 'Mostrar'">
+                     <UButton
+                        :icon="row.original.visible ? 'i-lucide-eye' : 'i-lucide-eye-off'"
+                        :color="row.original.visible ? 'success' : 'neutral'"
+                        variant="ghost"
+                        size="xs"
+                        :loading="alternandoVisible === row.original.id"
+                        :disabled="alternandoVisible !== null || !puedeEditar"
+                        :aria-label="row.original.visible ? 'Ocultar' : 'Mostrar'"
+                        @click="alternarVisible(row.original)"
                      />
                   </UTooltip>
                   <UTooltip text="Editar">
@@ -219,9 +359,7 @@ async function confirmarEliminar() {
          </UTable>
       </div>
 
-      <div v-if="semestresFiltrados.length > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="semestresFiltrados.length" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="semestresFiltrados.length" />
 
       <!-- Modal crear -->
       <UModal v-model:open="modalCrearMostrar" title="Nuevo semestre" :ui="{ footer: 'justify-end' }">
@@ -239,6 +377,8 @@ async function confirmarEliminar() {
                   </UFormField>
                </div>
                <USwitch v-model="formCrear.vigente" label="Vigente" />
+               <USwitch v-model="formCrear.borrador" label="Borrador" />
+               <USwitch v-model="formCrear.visible" label="Visible" />
             </UForm>
          </template>
          <template #footer>
@@ -272,6 +412,8 @@ async function confirmarEliminar() {
                   </UFormField>
                </div>
                <USwitch v-model="formEditar.vigente" label="Vigente" />
+               <USwitch v-model="formEditar.borrador" label="Borrador" />
+               <USwitch v-model="formEditar.visible" label="Visible" />
             </UForm>
          </template>
          <template #footer>

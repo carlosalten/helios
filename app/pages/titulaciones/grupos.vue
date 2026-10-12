@@ -391,9 +391,7 @@ async function quitarIntegrante(integrante: { email: string }) {
          </UTable>
       </div>
 
-      <div v-if="gruposFiltrados.length > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="gruposFiltrados.length" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="gruposFiltrados.length" />
 
       <!-- Detalle (integrantes) -->
       <USlideover

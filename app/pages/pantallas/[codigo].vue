@@ -112,12 +112,12 @@ const colorBarraSuperior = computed(() => {
    return vistaActual.value === 'enCurso' ? 'bg-emerald-400' : 'bg-sky-400'
 })
 
-// Un color por carrera (no por paralelo, como en /reservas/horario): en esta pantalla lo que
+// Un color por carrera (no por paralelo, como en /horario/salas-semanal): en esta pantalla lo que
 // importa de un vistazo es "a qué carrera pertenece esta clase", así que todas las clases de
 // una misma carrera comparten color. Se deriva de forma estable a partir del nombre — no es
 // aleatorio, la misma carrera sale siempre del mismo color. Una reserva sin carrera (no es una
 // clase, o es una clase sin sesión de paralelo asociada) usa directamente el color de su tipo
-// de reserva (el mismo que se le asignó en Reservas → Tipos), igual que /reservas/horario.
+// de reserva (el mismo que se le asignó en Reservas → Tipos), igual que /horario/salas-semanal.
 function colorDe(clase: ClasePantalla) {
    if (!clase.esClase || !clase.carreraNombre) return clase.tipoReservaColor
    let indice = 0

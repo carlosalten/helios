@@ -31,9 +31,9 @@ export const crearAsignaturaSchema = z
       path: ['bloquesPractica'],
    })
 
-// Alta/baja de una equivalencia entre dos asignaturas (ver AsignaturaEquivalencia en
-// schema.prisma). El endpoint la guarda en las dos direcciones; acá solo se valida el par.
+// Alta/baja de una equivalencia de un plan (ver AsignaturaPlanEquivalente en schema.prisma):
+// `asignaturaId` pasa a ser equivalente a la asignatura de la malla `asignaturaPlanId`.
 export const toggleEquivalenciaSchema = z.object({
-   asignaturaId: z.number({ error: 'La asignatura es requerida' }).int(),
-   equivalenteId: z.number({ error: 'La asignatura equivalente es requerida' }).int(),
+   asignaturaPlanId: z.number({ error: 'La asignatura del plan es requerida' }).int(),
+   asignaturaId: z.number({ error: 'La asignatura equivalente es requerida' }).int(),
 })

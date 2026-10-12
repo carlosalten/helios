@@ -1,5 +1,5 @@
 // Paleta fija de colores para los tipos de reserva: el usuario elige por nombre, se guarda
-// el hex. Cada reserva en /reservas/horario toma el color de su tipo.
+// el hex. Cada reserva en /horario/salas-semanal toma el color de su tipo.
 export const COLORES_RESERVA = [
    { nombre: 'Rojo', hex: '#EF4444' },
    { nombre: 'Naranjo', hex: '#F97316' },
@@ -73,7 +73,7 @@ export interface Reserva {
    // null en una reserva no recurrente.
    serieId: string | null
    // Si la reserva se muestra en vistas de cara al público: la vista impresa de
-   // /reservas/horario y la pantalla pública (/pantallas/<codigo>).
+   // /horario/salas-semanal y la pantalla pública (/pantallas/<codigo>).
    publica: boolean
    // Suspendida: no se borra (sigue tomando la sala en la BD), pero se destaca en rojo y con la
    // etiqueta "Suspendida" en vez de mostrarse como una reserva normal. Solo afecta esta
@@ -89,9 +89,12 @@ export interface Reserva {
          codigo: string
          // Color del paralelo en la matriz de horario; nulo mientras no se le asigne uno.
          color: string | null
+         // Equivalente desde la que se programó (null = asignatura de la malla). Para mostrar,
+         // usar `asignaturaVisible(paralelo)`.
+         asignaturaEquivalente: { codigo: string; nombre: string; nombreCorto: string | null } | null
          asignaturaPlan: {
             // `nombreCorto` nulo: se muestra `nombre` completo — ver `nombreAsignaturaDe`.
-            asignatura: { nombre: string; nombreCorto: string | null }
+            asignatura: { codigo: string; nombre: string; nombreCorto: string | null }
             plan: { numero: number; carreraCodigo: number; carrera: { nombre: string; nombreCorto: string } }
          }
       }

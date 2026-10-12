@@ -38,6 +38,10 @@ export default defineNuxtConfig({
    // cabeceras de refuerzo sin efectos colaterales. HSTS solo actúa sobre HTTPS (los
    // navegadores la ignoran en http/localhost).
    routeRules: {
+      // Rutas antiguas de los horarios de salas (semanal, movido desde Reservas, y semestral):
+      // no romper marcadores ni enlaces guardados.
+      '/reservas/horario': { redirect: { to: '/horario/salas-semanal', statusCode: 301 } },
+      '/horario/salas': { redirect: { to: '/horario/salas-semestral', statusCode: 301 } },
       '/**': {
          headers: {
             'X-Frame-Options': 'DENY',

@@ -48,6 +48,7 @@ export default defineEventHandler(async (event) => {
                asignaturaPlan: {
                   select: { planId: true, asignatura: { select: { id: true, nombre: true, codigo: true } } },
                },
+               asignaturaEquivalente: { select: { id: true, nombre: true, codigo: true } },
             },
          },
          bloques: { select: { bloqueId: true } },
@@ -81,6 +82,9 @@ export default defineEventHandler(async (event) => {
       }
 
       const { planId, asignatura } = sesion.paralelo.asignaturaPlan
+      // La fila del informe es la asignatura que se muestra (la equivalente, si el paralelo se
+      // programó desde una); la deduplicación de clases sigue por la asignatura de la malla.
+      const mostrada = asignaturaVisibleParalelo(sesion.paralelo)
       const codigoParalelo = sesion.paralelo.codigo
 
       const plan = fila.planes.get(planId) ?? {
@@ -88,10 +92,10 @@ export default defineEventHandler(async (event) => {
          bloquesUnicos: new Set<string>(),
          asignaturas: new Map<number, AsignaturaFila>(),
       }
-      const asignaturaFila = plan.asignaturas.get(asignatura.id) ?? {
-         asignaturaId: asignatura.id,
-         nombre: asignatura.nombre,
-         codigo: asignatura.codigo,
+      const asignaturaFila = plan.asignaturas.get(mostrada.id) ?? {
+         asignaturaId: mostrada.id,
+         nombre: mostrada.nombre,
+         codigo: mostrada.codigo,
          paralelos: new Map<string, ParaleloFila>(),
       }
       const paraleloFila = asignaturaFila.paralelos.get(codigoParalelo) ?? {
@@ -110,7 +114,7 @@ export default defineEventHandler(async (event) => {
       }
 
       asignaturaFila.paralelos.set(codigoParalelo, paraleloFila)
-      plan.asignaturas.set(asignatura.id, asignaturaFila)
+      plan.asignaturas.set(mostrada.id, asignaturaFila)
       fila.planes.set(planId, plan)
       porProfesor.set(sesion.profesorId, fila)
    }
@@ -135,6 +139,7 @@ export default defineEventHandler(async (event) => {
                     asignaturaPlan: {
                        select: { planId: true, asignatura: { select: { id: true, nombre: true, codigo: true } } },
                     },
+                    asignaturaEquivalente: { select: { id: true, nombre: true, codigo: true } },
                  },
               },
               bloques: { select: { bloque: { select: { id: true, numero: true, inicio: true, fin: true } } } },
@@ -180,8 +185,8 @@ export default defineEventHandler(async (event) => {
          }
          grupo.clases.set(claveClase, {
             asignaturaId: asignatura.id,
-            asignaturaNombre: asignatura.nombre,
-            asignaturaCodigo: asignatura.codigo,
+            asignaturaNombre: asignaturaVisibleParalelo(sesion.paralelo).nombre,
+            asignaturaCodigo: asignaturaVisibleParalelo(sesion.paralelo).codigo,
             planId,
             codigoParalelo,
          })

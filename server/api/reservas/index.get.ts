@@ -1,9 +1,10 @@
 // Reservas de sala (no las de clases) para armar la vista de horario por sala: una sala y
-// un rango de fechas a la vez (la semana visible en /reservas/horario, o cada sala elegida en
+// un rango de fechas a la vez (la semana visible en /horario/salas-semanal, o cada sala elegida en
 // /reservas/imprimir, que pide una por una).
 export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [
-      ['/reservas/horario', 'ver'],
+      ['/horario/salas-semanal', 'ver'],
+      ['/horario/salas-semestral', 'ver'],
       ['/reservas/imprimir', 'ver'],
       ['/ayudantias', 'ver'],
    ])
@@ -38,11 +39,15 @@ export default defineEventHandler(async (event) => {
          persona: { select: { id: true, nombre: true, apellido: true } },
          tipoReserva: true,
          // Si la reserva viene de una sesión de clases, se arrastra la asignatura y la
-         // carrera para mostrarlas en el cuadro de la reserva en /reservas/horario.
+         // carrera para mostrarlas en el cuadro de la reserva en /horario/salas-semanal.
          sesionParalelo: {
             include: {
                paralelo: {
-                  include: { asignaturaPlan: { include: { asignatura: true, plan: { include: { carrera: true } } } } },
+                  include: {
+                     asignaturaPlan: { include: { asignatura: true, plan: { include: { carrera: true } } } },
+                     // La equivalente desde la que se programó, si hay: es la que se muestra.
+                     asignaturaEquivalente: true,
+                  },
                },
             },
          },

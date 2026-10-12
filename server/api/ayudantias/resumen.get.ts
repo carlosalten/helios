@@ -1,7 +1,7 @@
 // Resumen de ayudantías para /ayudantias/resumen: una fila por ayudantía (agrupando las N
 // ocurrencias semanales de una misma serie recurrente en una sola), con la carrera/plan,
 // asignatura, paralelo, ayudante, sala y horario. Solo incluye reservas creadas desde
-// /ayudantias (paraleloId no nulo) — una "Ayudantía" creada a mano desde /reservas/horario,
+// /ayudantias (paraleloId no nulo) — una "Ayudantía" creada a mano desde /horario/salas-semanal,
 // sin pasar por esa cascada, no tiene carrera/asignatura/paralelo que mostrar acá.
 //
 // Alcance: igual que /reservas/resumen (server/api/reservas/resumen.get.ts) — acotado a las
@@ -35,6 +35,8 @@ export default defineEventHandler(async (event) => {
          paralelo: {
             select: {
                codigo: true,
+               curso: { select: { semestreId: true } },
+               asignaturaEquivalente: { select: { codigo: true, nombre: true, nombreCorto: true } },
                asignaturaPlan: {
                   select: {
                      asignatura: { select: { codigo: true, nombre: true, nombreCorto: true } },
@@ -78,7 +80,7 @@ export default defineEventHandler(async (event) => {
       .filter((r) => r.paralelo != null)
       .map((r) => {
          const paralelo = r.paralelo!
-         const asignatura = paralelo.asignaturaPlan.asignatura
+         const asignatura = asignaturaVisibleParalelo(paralelo)
          const plan = paralelo.asignaturaPlan.plan
          return {
             reservaId: r.id,
@@ -87,6 +89,7 @@ export default defineEventHandler(async (event) => {
             carreraCodigo: plan.carreraCodigo,
             planId: plan.id,
             planNumero: plan.numero,
+            semestreId: paralelo.curso.semestreId,
             asignaturaCodigo: asignatura.codigo,
             asignaturaNombre: asignatura.nombreCorto ?? asignatura.nombre,
             paraleloCodigo: paralelo.codigo,

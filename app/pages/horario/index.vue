@@ -26,15 +26,21 @@ const {
 const { tieneAlcanceSobreCarrera, puedeVerCarrera } = useAlcanceCarrera()
 
 const { data: semestres } = await useFetch<Semestre[]>('/api/semestres')
+const { esSemestreSeleccionable, semestrePorDefecto } = useVisibilidadSemestre()
 
-/* ── Semestre que se está editando: por defecto el vigente, pero se puede cambiar ── */
+/* ── Semestre que se está editando: por defecto el preferido (vigente o borrador), pero se puede cambiar ── */
 const semestreSeleccionadoId = ref<number>()
 watchEffect(() => {
    if (semestreSeleccionadoId.value == null && semestres.value?.length) {
-      semestreSeleccionadoId.value = semestres.value.find((s) => s.vigente)?.id ?? semestres.value[0]!.id
+      const visibles = semestres.value.filter(esSemestreSeleccionable)
+      semestreSeleccionadoId.value = semestrePorDefecto(visibles)?.id ?? visibles[0]?.id ?? semestres.value[0]!.id
    }
 })
-const opcionesSemestre = computed(() => (semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })))
+const opcionesSemestre = computed(() =>
+   (semestres.value ?? [])
+      .filter((s) => esSemestreSeleccionable(s) || s.id === semestreSeleccionadoId.value)
+      .map((s) => ({ label: s.nombre, value: s.id }))
+)
 const semestreSeleccionado = computed(
    () => (semestres.value ?? []).find((s) => s.id === semestreSeleccionadoId.value) ?? null
 )
@@ -85,7 +91,7 @@ const mostrarTopesEspejo = computed(() => user.value?.mostrarTopesEspejo ?? true
 const colorTopesEspejo = computed(() => user.value?.colorTopesEspejo ?? '#06B6D4')
 
 const { conectado: enVivo } = useHorarioTiempoReal(async (eventos) => {
-   // Las reservas de sala sueltas (/reservas/horario) no alteran la matriz de clases: se
+   // Las reservas de sala sueltas (/horario/salas-semanal) no alteran la matriz de clases: se
    // ignoran para no refrescar ni avisar por un cambio que acá no se ve.
    const relevantes = eventos.filter(
       (e) => e.tipo !== 'reserva' && (e.semestreId === null || e.semestreId === semestreSeleccionadoId.value)
@@ -385,6 +391,62 @@ const sesionesDelCurso = computed(() =>
    (sesiones.value ?? []).filter((s) => s.paralelo.cursoId === cursoSeleccionado.value)
 )
 
+/* ── Exportar CSV ────────────────────────────────────────────
+   Todo el horario de la carrera (plan vigente) en el semestre seleccionado — todos sus cursos,
+   no solo la pestaña visible —, una fila por sesión (paralelo + día + bloque). Las sesiones aún
+   sin bloque asignado van al final con día/horario vacíos. */
+function exportarCsvHorario() {
+   const semestre = semestreSeleccionado.value
+   if (!semestre) return
+   const cursosPorId = new Map(cursosDeCarrera.value.map((c) => [c.id, c]))
+   const filas = (sesiones.value ?? [])
+      .filter((s) => cursosPorId.has(s.paralelo.cursoId))
+      .sort((a, b) => {
+         const cursoA = cursosPorId.get(a.paralelo.cursoId)!.nombre
+         const cursoB = cursosPorId.get(b.paralelo.cursoId)!.nombre
+         return (
+            cursoA.localeCompare(cursoB) ||
+            (a.bloque ? a.diaSemana : 99) - (b.bloque ? b.diaSemana : 99) ||
+            (a.bloque?.numero ?? 99) - (b.bloque?.numero ?? 99) ||
+            asignaturaVisible(a.paralelo).codigo.localeCompare(asignaturaVisible(b.paralelo).codigo)
+         )
+      })
+      .map((s) => {
+         const curso = cursosPorId.get(s.paralelo.cursoId)!
+         const asignatura = asignaturaVisible(s.paralelo)
+         return [
+            curso.nombre,
+            `Plan N°${curso.plan.numero}`,
+            asignatura.codigo,
+            asignatura.nombre,
+            s.paralelo.codigo,
+            s.tipo === 'TEORIA' ? 'Teoría' : 'Práctica',
+            s.bloque ? (DIAS_SEMANA.find((d) => d.valor === s.diaSemana)?.nombre ?? String(s.diaSemana)) : '',
+            s.bloque?.numero ?? '',
+            s.bloque ? formatHora(s.bloque.inicio) : '',
+            s.bloque ? formatHora(s.bloque.fin) : '',
+            s.salaCodigo ?? '',
+            s.profesor ? `${s.profesor.nombre} ${s.profesor.apellido}` : '',
+         ]
+      })
+   const encabezados = [
+      'Curso',
+      'Plan',
+      'Código asignatura',
+      'Asignatura',
+      'Paralelo',
+      'Tipo',
+      'Día',
+      'Bloque',
+      'Inicio',
+      'Fin',
+      'Sala',
+      'Profesor',
+   ]
+   const planes = [...new Set(cursosDeCarrera.value.map((c) => c.plan.numero))].sort((a, b) => a - b).join('-')
+   descargarCsv(`horario-${carreraSeleccionada.value}-plan-${planes}-${semestre.nombre}.csv`, encabezados, filas)
+}
+
 /* ── Panel "Profesores anteriores": quién ha dictado la asignatura de la sesión elegida ───
    Se guarda el id (no la sesión completa) para que la selección se recalcule sola contra la
    lista viva de `sesionesDelCurso` — si la sesión se mueve o se borra, `sesionSeleccionada`
@@ -447,10 +509,10 @@ function sesionesEnCelda(diaSemana: number, bloqueId: number) {
 
 /* ── Vista imprimible ────────────────────────────────────────────────────
    El horario de un curso es una plantilla semanal (sin fechas): a diferencia de
-   /reservas/horario, cada sesión ya vive en un único (día, bloque) exacto, así que no hace
+   /horario/salas-semanal, cada sesión ya vive en un único (día, bloque) exacto, así que no hace
    falta agrupar por solapamiento — solo fusionar, en un mismo día, los bloques CONSECUTIVOS
    que son la misma clase (un paralelo de teoría/práctica que ocupa varios bloques seguidos),
-   igual que en el reporte impreso de /reservas/horario: un solo recuadro con `rowspan` en vez
+   igual que en el reporte impreso de /horario/salas-semanal: un solo recuadro con `rowspan` en vez
    de la misma sesión repetida bloque a bloque. */
 function mismaActividadImpresion(a: SesionParalelo, b: SesionParalelo) {
    return (
@@ -855,6 +917,16 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
             >
                Imprimir
             </UButton>
+            <UButton
+               icon="i-lucide-download"
+               variant="outline"
+               color="success"
+               aria-label="Exportar horario de la carrera a CSV"
+               :disabled="!cursosDeCarrera.length"
+               @click="exportarCsvHorario"
+            >
+               Exportar CSV
+            </UButton>
          </div>
       </div>
 
@@ -1032,7 +1104,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                                     >
                                        <div class="flex items-center justify-between gap-1">
                                           <span class="font-semibold text-usm-text dark:text-white">
-                                             {{ sesion.paralelo.asignaturaPlan.asignatura.codigo }} ·
+                                             {{ asignaturaVisible(sesion.paralelo).codigo }} ·
                                              {{ sesion.paralelo.codigo }}
                                           </span>
                                           <div class="flex items-center gap-1">
@@ -1053,7 +1125,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                                              </button>
                                           </div>
                                        </div>
-                                       <div>{{ sesion.paralelo.asignaturaPlan.asignatura.nombre }}</div>
+                                       <div>{{ asignaturaVisible(sesion.paralelo).nombre }}</div>
                                        <div class="mt-1 flex items-center gap-1">
                                           <UPopover v-if="conflictosSala(sesion).length" class="min-w-0 flex-1">
                                              <div
@@ -1086,7 +1158,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                                                          {{ conflicto.paralelo.asignaturaPlan.plan.carrera.nombre }}
                                                       </p>
                                                       <p class="text-usm-text-muted dark:text-slate-400">
-                                                         {{ conflicto.paralelo.asignaturaPlan.asignatura.nombre }} ·
+                                                         {{ asignaturaVisible(conflicto.paralelo).nombre }} ·
                                                          {{ conflicto.paralelo.curso.nombre }} · Paralelo
                                                          {{ conflicto.paralelo.codigo }}
                                                       </p>
@@ -1168,7 +1240,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                                                          {{ conflicto.paralelo.asignaturaPlan.plan.carrera.nombre }}
                                                       </p>
                                                       <p class="text-usm-text-muted dark:text-slate-400">
-                                                         {{ conflicto.paralelo.asignaturaPlan.asignatura.nombre }} ·
+                                                         {{ asignaturaVisible(conflicto.paralelo).nombre }} ·
                                                          {{ conflicto.paralelo.curso.nombre }} · Paralelo
                                                          {{ conflicto.paralelo.codigo }}
                                                       </p>
@@ -1247,10 +1319,10 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                               <div class="mb-2 flex items-start justify-between gap-2">
                                  <div class="min-w-0">
                                     <p class="text-sm font-medium text-usm-text dark:text-white">
-                                       {{ paralelo.asignaturaPlan.asignatura.nombre }}
+                                       {{ asignaturaVisible(paralelo).nombre }}
                                     </p>
                                     <p class="text-xs text-usm-text-muted dark:text-slate-400">
-                                       {{ paralelo.asignaturaPlan.asignatura.codigo }} · Paralelo
+                                       {{ asignaturaVisible(paralelo).codigo }} · Paralelo
                                        <UTooltip :text="puedeEditarHorario ? 'Editar código' : paralelo.codigo">
                                           <button
                                              type="button"
@@ -1428,8 +1500,8 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                         </div>
                         <template v-else>
                            <p class="mb-2 truncate text-xs font-medium text-usm-text dark:text-white">
-                              {{ sesionSeleccionada.paralelo.asignaturaPlan.asignatura.codigo }} ·
-                              {{ sesionSeleccionada.paralelo.asignaturaPlan.asignatura.nombre }}
+                              {{ asignaturaVisible(sesionSeleccionada.paralelo).codigo }} ·
+                              {{ asignaturaVisible(sesionSeleccionada.paralelo).nombre }}
                            </p>
                            <div v-if="cargandoHistorial" class="text-sm text-usm-text-muted dark:text-slate-400">
                               Cargando…
@@ -1533,7 +1605,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
 
    <!-- Versión imprimible: solo visible al imprimir (ver .print:hidden arriba). El horario de
         un curso es una plantilla semanal fija (sin fechas), así que a diferencia de
-        /reservas/horario no hace falta agrupar por rowspan: una sesión ya vive en un solo
+        /horario/salas-semanal no hace falta agrupar por rowspan: una sesión ya vive en un solo
         (día, bloque) exacto, igual que en la matriz de pantalla. -->
    <div v-if="cursoActual" class="hidden print:block">
       <div class="mb-3">
@@ -1605,11 +1677,12 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                               class="leading-tight not-last:mb-1 not-last:border-b not-last:border-dashed not-last:border-[#d4d4d4] not-last:pb-1"
                            >
                               <p class="truncate font-semibold text-black">
-                                 {{ sesion.paralelo.asignaturaPlan.asignatura.codigo }} ·
-                                 {{ sesion.paralelo.codigo }} ({{ sesion.tipo === 'TEORIA' ? 'T' : 'P' }})
+                                 {{ asignaturaVisible(sesion.paralelo).codigo }} · {{ sesion.paralelo.codigo }} ({{
+                                    sesion.tipo === 'TEORIA' ? 'T' : 'P'
+                                 }})
                               </p>
                               <p class="truncate text-gray-700">
-                                 {{ sesion.paralelo.asignaturaPlan.asignatura.nombre }}
+                                 {{ asignaturaVisible(sesion.paralelo).nombre }}
                               </p>
                               <p class="truncate text-gray-700">{{ sesion.sala?.codigo ?? 'Sin sala' }}</p>
                               <p class="truncate text-gray-700">
@@ -1632,7 +1705,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
 
 <style>
 /* Tailwind no tiene utilidad para @page — única forma de fijar tamaño/márgenes de la hoja.
-   Mismos valores que el reporte impreso de /reservas/horario, para que los horarios de sala y
+   Mismos valores que el reporte impreso de /horario/salas-semanal, para que los horarios de sala y
    de curso salgan con el mismo formato de papel. */
 @page {
    size: letter portrait;

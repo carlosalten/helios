@@ -31,11 +31,18 @@ model Rol {
   // aparecen, sin filtrar por rol).
   mostrarEnHorarioProfesores Boolean   @default(true) @map("mostrar_en_horario_profesores")
   // Si las personas de este rol pueden suspender/reactivar CUALQUIER reserva (no solo las
-  // propias) en /reservas/horario — ver server/utils/alcanceReservas.ts (`puedeSuspenderReserva`)
+  // propias) en /horario/salas-semanal — ver server/utils/alcanceReservas.ts (`puedeSuspenderReserva`)
   // y app/pages/configuracion/index.vue, donde se administra. Default false: los roles que no
   // se marquen acá solo pueden suspender lo que ya podían modificar antes (propias, o el
   // alcance más amplio que ya tuvieran por ser Administrador/Jefe de Carrera/encargado de sala).
   suspenderCualquierReserva  Boolean   @default(false) @map("suspender_cualquier_reserva")
+  // Si las personas de este rol ven el semestre marcado como `borrador` en los selectores
+  // internos de semestre (cursos, bloques horarios, feriados, horario, paralelos, copiar
+  // bloques) aunque ese semestre tenga `visible = false` — ver Semestre.visible y
+  // app/pages/configuracion/index.vue, donde se administra. 'Administrador' lo ve siempre,
+  // sin importar este valor (igual que /semestres, que nunca filtra por `visible`). Default
+  // false: los roles que no se marquen acá no ven el borrador mientras esté oculto.
+  verSemestreBorrador        Boolean   @default(false) @map("ver_semestre_borrador")
   personas                   Persona[]
 
   @@map("rol")
@@ -58,30 +65,44 @@ enum TemaPreferido {
   @@map("tema_preferido")
 }
 
+// Semestre que preseleccionan los selectores de semestre (cursos, bloques, feriados, horario,
+// paralelos) para esta persona — se elige en /semestres. Si elige BORRADOR pero no puede verlo
+// (oculto y sin Rol.verSemestreBorrador), se usa el vigente.
+enum SemestrePorDefecto {
+  VIGENTE
+  BORRADOR
+
+  @@map("semestre_por_defecto")
+}
+
 model Persona {
-  id                 Int             @id @default(autoincrement())
-  email              String          @unique @db.VarChar(50)
+  id                 Int                @id @default(autoincrement())
+  email              String             @unique @db.VarChar(50)
   // Nulo: la persona no tiene cuenta de acceso al sistema (solo agenda/reservas).
-  password           String?         @db.VarChar(60)
-  nombre             String          @db.VarChar(50)
-  apellido           String          @db.VarChar(50)
-  activo             Boolean         @default(true)
-  rolId              Int             @map("rol_id")
+  password           String?            @db.VarChar(60)
+  nombre             String             @db.VarChar(50)
+  apellido           String             @db.VarChar(50)
+  activo             Boolean            @default(true)
+  rolId              Int                @map("rol_id")
   // Solo aplica a profesores; nulo para el resto de los roles.
-  jornadaLaboral     JornadaLaboral? @map("jornada_laboral")
+  jornadaLaboral     JornadaLaboral?    @map("jornada_laboral")
   // Preferencia de theme (claro/oscuro) de la persona. Se aplica al iniciar sesión y se puede
   // cambiar en /cuenta/preferencias.
-  temaPreferido      TemaPreferido   @default(CLARO) @map("tema_preferido")
+  temaPreferido      TemaPreferido      @default(CLARO) @map("tema_preferido")
   // Si /horario destaca los "topes" de un paralelo dictado en más de un curso (mismo paralelo
   // espejo, no un choque real de sala/profesor — ver `topeEsEspejo` en horario/index.vue), y
   // con qué color. Se cambia en /cuenta/preferencias.
-  mostrarTopesEspejo Boolean         @default(true) @map("mostrar_topes_espejo")
-  colorTopesEspejo   String          @default("#06B6D4") @map("color_topes_espejo") @db.VarChar(7)
+  mostrarTopesEspejo Boolean            @default(true) @map("mostrar_topes_espejo")
+  colorTopesEspejo   String             @default("#06B6D4") @map("color_topes_espejo") @db.VarChar(7)
+  semestrePorDefecto SemestrePorDefecto @default(VIGENTE) @map("semestre_por_defecto")
+  // Tamaño de página por defecto de las tablas (10, 20, 30, 40 o 50 — CHECK
+  // persona_registros_por_pagina_valido). Ver /cuenta/preferencias y usePaginacion.
+  registrosPorPagina Int                @default(20) @map("registros_por_pagina") @db.SmallInt
   // Nulo: sin emoji asignado. Un solo emoji (posiblemente una secuencia ZWJ de varios
   // codepoints — familia, tono de piel, etc.) elegido de
   // https://unicode.org/emoji/charts/full-emoji-list.html. Se muestra flotando sobre el
   // círculo de iniciales en el navbar (app/layouts/default.vue).
-  emoji              String?         @db.VarChar(32)
+  emoji              String?            @db.VarChar(32)
 
   rol Rol @relation(fields: [rolId], references: [id])
 
@@ -142,9 +163,10 @@ model Plan {
   // el cuadro no se muestra aunque el plan ya tuviera asignaturas marcadas `esElectiva`.
   tieneElectivos    Boolean @default(false) @map("tiene_electivos")
 
-  carrera         Carrera          @relation(fields: [carreraCodigo], references: [codigo])
+  carrera         Carrera                     @relation(fields: [carreraCodigo], references: [codigo])
   asignaturasPlan AsignaturaPlan[]
   cursos          Curso[]
+  equivalentes    AsignaturaPlanEquivalente[]
 
   @@index([carreraCodigo])
   @@map("plan")
@@ -153,16 +175,19 @@ model Plan {
 // Cohorte/generación de una carrera dentro de un plan (ej. "1er año", "2do año") en un
 // semestre específico. Los paralelos se agendan en el horario de un curso específico.
 model Curso {
-  id             Int    @id @default(autoincrement())
-  nombre         String @db.VarChar(50)
+  id             Int     @id @default(autoincrement())
+  nombre         String  @db.VarChar(50)
   // Número de la cohorte (1er año, 2do año, …). Constraint `curso_numero_positivo` en BD.
   numero         Int
   // Posición curricular (1..12) dentro del plan — se compara contra AsignaturaPlan.semestre
   // al crear un paralelo. Constraint `curso_numero_semestre_rango` en BD. Distinto de
   // `semestreId`, que apunta al semestre académico real (calendario).
-  numeroSemestre Int    @map("numero_semestre")
-  planId         Int    @map("plan_id")
-  semestreId     Int    @map("semestre_id")
+  numeroSemestre Int     @map("numero_semestre")
+  planId         Int     @map("plan_id")
+  semestreId     Int     @map("semestre_id")
+  // El Jefe de Carrera lo alterna para todos los cursos de su carrera en el semestre borrador,
+  // desde /semestres/resumen (ver server/api/semestres/resumen/visibilidad-cursos.patch.ts).
+  visible        Boolean @default(true)
 
   plan      Plan       @relation(fields: [planId], references: [id])
   semestre  Semestre   @relation(fields: [semestreId], references: [id])
@@ -184,37 +209,41 @@ model Asignatura {
   bloquesTeoria   Int     @map("bloques_teoria")
   bloquesPractica Int     @map("bloques_practica")
 
-  asignaturasPlan AsignaturaPlan[]
-  // Las dos puntas de la misma relación simétrica (ver AsignaturaEquivalencia): para saber
-  // con qué asignaturas es equivalente esta, basta con `equivalencias` — la fila inversa
-  // siempre existe.
-  equivalencias   AsignaturaEquivalencia[] @relation("equivalenciaOrigen")
-  equivalenteDe   AsignaturaEquivalencia[] @relation("equivalenciaDestino")
+  asignaturasPlan          AsignaturaPlan[]
+  // Planes en los que esta asignatura es equivalente a una de su malla (ver
+  // AsignaturaPlanEquivalente).
+  equivalenteEnPlanes      AsignaturaPlanEquivalente[]
+  // Paralelos programados como esta asignatura siendo equivalente a una del plan (ver
+  // Paralelo.asignaturaEquivalenteId).
+  paralelosComoEquivalente Paralelo[]                  @relation("paraleloEquivalente")
 
   @@map("asignatura")
 }
 
-// Equivalencia entre dos asignaturas: distintos códigos que se dictan como la misma
-// asignatura (ej. HCW100_T en el plan y HCW100 en la programación de un semestre). Se usa en
-// la carga masiva para aceptar paralelos de un código que no está en el plan pero sí lo está
-// su equivalente.
+// Equivalencia propia de un plan: en el plan `planId`, la asignatura `asignaturaId` (distinto
+// código, ej. HCW100) se acepta como la asignatura de la malla `asignaturaPlanId` (ej.
+// HCW100-T). La usan la carga masiva (paralelos de un código que no está en el plan) y la
+// creación de paralelos desde una equivalente (/paralelos/asignacion y /paralelos). Se
+// administra en /asignaturas/equivalencias.
 //
-// La relación es **simétrica y se guarda en las dos direcciones**: dar de alta A↔B inserta
-// (A,B) y (B,A). Así cualquier consulta se resuelve mirando solo `equivalencias`, sin tener
-// que unir también la punta inversa. Los endpoints (`/api/asignaturas/equivalencias/toggle`)
-// son los responsables de mantener el par completo.
-//
-// No es transitiva: si A↔B y B↔C, A y C no quedan equivalentes salvo que se indique explícito.
-model AsignaturaEquivalencia {
-  asignaturaId  Int @map("asignatura_id")
-  equivalenteId Int @map("equivalente_id")
+// Es dirigida y por plan: no es recíproca ni aplica a otros planes. `planId` repite el plan de
+// `asignaturaPlan` para poder exigir en BD que una asignatura sea equivalente a lo más a UNA
+// asignatura de cada plan (@@unique [planId, asignaturaId]). Además, validado en el endpoint:
+// la equivalente no es la propia asignatura del plan ni otra asignatura de su malla.
+model AsignaturaPlanEquivalente {
+  id               Int @id @default(autoincrement())
+  asignaturaPlanId Int @map("asignatura_plan_id")
+  asignaturaId     Int @map("asignatura_id")
+  planId           Int @map("plan_id")
 
-  asignatura  Asignatura @relation("equivalenciaOrigen", fields: [asignaturaId], references: [id], onDelete: Cascade)
-  equivalente Asignatura @relation("equivalenciaDestino", fields: [equivalenteId], references: [id], onDelete: Cascade)
+  asignaturaPlan AsignaturaPlan @relation(fields: [asignaturaPlanId], references: [id], onDelete: Cascade)
+  asignatura     Asignatura     @relation(fields: [asignaturaId], references: [id], onDelete: Cascade)
+  plan           Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  @@id([asignaturaId, equivalenteId])
-  @@index([equivalenteId])
-  @@map("asignatura_equivalencia")
+  @@unique([planId, asignaturaId])
+  @@index([asignaturaPlanId])
+  @@index([asignaturaId])
+  @@map("asignatura_plan_equivalente")
 }
 
 model AsignaturaPlan {
@@ -236,9 +265,11 @@ model AsignaturaPlan {
   // plan): la misma asignatura puede estar exenta en un plan y no en otro.
   exentaTope   Boolean @default(false) @map("exenta_tope")
 
-  asignatura Asignatura @relation(fields: [asignaturaId], references: [id])
-  plan       Plan       @relation(fields: [planId], references: [id])
-  paralelos  Paralelo[]
+  asignatura   Asignatura                  @relation(fields: [asignaturaId], references: [id])
+  plan         Plan                        @relation(fields: [planId], references: [id])
+  paralelos    Paralelo[]
+  // Asignaturas equivalentes a esta en este plan (ver AsignaturaPlanEquivalente).
+  equivalentes AsignaturaPlanEquivalente[]
 
   @@unique([asignaturaId, planId])
   @@index([planId])
@@ -246,28 +277,35 @@ model AsignaturaPlan {
 }
 
 model Paralelo {
-  id               Int     @id @default(autoincrement())
-  codigo           String  @db.VarChar(10)
+  id                      Int     @id @default(autoincrement())
+  codigo                  String  @db.VarChar(10)
   // Cupo de estudiantes del paralelo. Constraint `paralelo_cupo_rango` en BD (0 a 100).
-  cupo             Int     @default(0)
+  cupo                    Int     @default(0)
   // Posición dentro de su curso (cursoId) en el tablero de /paralelos/asignacion;
   // ordenable a mano (drag and drop).
-  orden            Int     @default(0)
+  orden                   Int     @default(0)
   // Color (hex, ej. "#3B82F6") de los bloques de este paralelo en la matriz de horario.
   // Nulo: usa el color por defecto según el tipo de sesión (teoría/práctica).
-  color            String? @db.VarChar(7)
-  asignaturaPlanId Int     @map("asignatura_plan_id")
-  cursoId          Int     @map("curso_id")
+  color                   String? @db.VarChar(7)
+  asignaturaPlanId        Int     @map("asignatura_plan_id")
+  cursoId                 Int     @map("curso_id")
+  // Asignatura equivalente (ver AsignaturaEquivalencia) desde la que se creó el paralelo; nulo =
+  // asignatura de la malla. El paralelo igual cuelga de la AsignaturaPlan del plan
+  // (`asignaturaPlanId`): esto solo registra que se programó como la equivalente — se llena al
+  // crearlo desde una equivalente en /paralelos/asignacion o /paralelos y en la carga masiva.
+  asignaturaEquivalenteId Int?    @map("asignatura_equivalente_id")
 
-  asignaturaPlan    AsignaturaPlan   @relation(fields: [asignaturaPlanId], references: [id])
-  curso             Curso            @relation(fields: [cursoId], references: [id])
-  sesiones          SesionParalelo[]
+  asignaturaPlan        AsignaturaPlan   @relation(fields: [asignaturaPlanId], references: [id])
+  curso                 Curso            @relation(fields: [cursoId], references: [id])
+  asignaturaEquivalente Asignatura?      @relation("paraleloEquivalente", fields: [asignaturaEquivalenteId], references: [id], onDelete: SetNull)
+  sesiones              SesionParalelo[]
   // Ayudantías (Reserva.paraleloId) creadas desde /ayudantias para este paralelo — distinto de
   // `sesiones`, que son las clases propiamente tales.
-  reservasAyudantia Reserva[]
+  reservasAyudantia     Reserva[]
 
   @@index([asignaturaPlanId])
   @@index([cursoId])
+  @@index([asignaturaEquivalenteId])
   @@map("paralelo")
 }
 
@@ -281,6 +319,15 @@ model Semestre {
   fechaInicio DateTime @map("fecha_inicio") @db.Date
   fechaFin    DateTime @map("fecha_fin") @db.Date
   vigente     Boolean  @default(false)
+  // A lo más un semestre puede estar marcado como borrador a la vez (mismo criterio que
+  // `vigente`, forzado a mano en los endpoints — Prisma no modela "a lo más una fila en
+  // true"). Es independiente de `vigente`: un semestre puede estar como borrador mientras
+  // otro sigue vigente, para ir armando el próximo semestre sin tocar el que está en curso.
+  borrador    Boolean  @default(false)
+  // Controla si el semestre aparece en los selectores de semestre del resto de la app (cursos,
+  // bloques horarios, feriados, horario, paralelos, reservas, copiar bloques). La página
+  // /semestres siempre lista todos los semestres, visibles o no, para poder revertir el flag.
+  visible     Boolean  @default(true)
 
   cursos   Curso[]
   bloques  Bloque[]
@@ -492,10 +539,10 @@ model TipoReserva {
   id                Int       @id @default(autoincrement())
   nombre            String    @db.VarChar(30)
   // Hex de una paleta fija de 20 colores con nombre (ver COLORES_RESERVA en
-  // app/types/reserva.ts): cada reserva de este tipo toma este color en /reservas/horario.
+  // app/types/reserva.ts): cada reserva de este tipo toma este color en /horario/salas-semanal.
   color             String    @db.VarChar(7)
   // Valor por defecto de Reserva.publica para una reserva nueva de este tipo: se usa al
-  // prellenar el formulario de nueva reserva en /reservas/horario y al generar las reservas
+  // prellenar el formulario de nueva reserva en /horario/salas-semanal y al generar las reservas
   // de sala de una sesión de clases (ver regenerarReservaSesion en reservasSesion.ts y la
   // carga masiva de horario en cargaMasiva.ts). Cambiar este valor no toca las reservas ya
   // creadas de ese tipo, solo el default para las nuevas.
@@ -532,12 +579,12 @@ model Reserva {
   // aparte: la recurrencia se sabe por si serieId es null o no.
   serieId          String?  @map("serie_id") @db.Uuid
   // Si la reserva se muestra en vistas de cara al público: la vista impresa de
-  // /reservas/horario y la pantalla pública (/pantallas/<codigo>). Por defecto sí — se marca
+  // /horario/salas-semanal y la pantalla pública (/pantallas/<codigo>). Por defecto sí — se marca
   // en false para reservas que deben tomar la sala en la BD pero no anunciarse (p. ej.
   // bloqueos internos de mantenimiento).
   publica          Boolean  @default(true)
   // Reserva suspendida: a diferencia de borrarla, queda visible (destacada en rojo) en
-  // /reservas/horario y en la pantalla pública — sirve para avisar que una clase puntual no se
+  // /horario/salas-semanal y en la pantalla pública — sirve para avisar que una clase puntual no se
   // dicta ese día sin perder el registro de que la sala estaba tomada. No aplica a la serie
   // completa de una reserva recurrente, solo a esta ocurrencia — ver
   // server/api/reservas/[id]/suspender.patch.ts.

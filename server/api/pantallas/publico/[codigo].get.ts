@@ -10,7 +10,7 @@
 // tótem de aeropuerto. Se muestra CUALQUIER tipo de reserva (clases generadas desde un paralelo,
 // reuniones, eventos, bloqueos manuales, …), no solo las que vienen de una sesión de clases — el
 // único filtro es `publica: true` (mismo campo que controla la vista impresa de
-// /reservas/horario): una reserva marcada como no pública toma la sala igual, pero no debe
+// /horario/salas-semanal): una reserva marcada como no pública toma la sala igual, pero no debe
 // anunciarse acá.
 function aHora(hora: Date) {
    return hora.toISOString().slice(11, 16)
@@ -41,7 +41,7 @@ function hoyYAhoraChile(fecha: Date) {
 }
 
 // Una reserva se "lee como clase" (muestra asignatura/carrera/profesor en vez de tipo/título) si
-// su tipo es Clase o Ayudantía — mismo criterio que `esClase` en /reservas/horario. No se mira
+// su tipo es Clase o Ayudantía — mismo criterio que `esClase` en /horario/salas-semanal. No se mira
 // `sesionParaleloId`: una ayudantía es una reserva hecha a mano, sin sesión asociada, pero se
 // lee igual que una clase. Si además tiene sesión (`sesionParalelo`), se sabe la asignatura y
 // carrera concretas; si no, se muestra solo el título y el profesor/responsable, si tiene.
@@ -102,7 +102,9 @@ function fusionarBloquesContiguos(crudas: ReservaCruda[]): ClaseResumen[] {
             actual.bloqueNumero + 1 === r.bloqueNumero &&
             // Si solo un bloque de una clase de varias horas se suspende, no puede fundirse con
             // el resto en una sola entrada: se perdería justo el dato de cuál bloque suspendió.
-            actual.suspendida === r.suspendida
+            actual.suspendida === r.suspendida &&
+            // Tampoco si cambia el profesor: la entrada muestra un solo responsable.
+            actual.responsable === r.responsable
          ) {
             // Mismo criterio que `fusionarContiguas` en /reservas/imprimir: se extiende el
             // tramo actual en vez de crear uno nuevo.
@@ -143,7 +145,7 @@ export default defineEventHandler(async (event) => {
    const salaCodigos = pantalla.salas.map((ps) => ps.salaCodigo)
    if (!salaCodigos.length) return { ...respuestaBase, hoy: null, enCurso: [], proximas: [] }
 
-   // A diferencia de /dashboard o /reservas/horario, acá no hay una persona logueada cuyo huso
+   // A diferencia de /dashboard o /horario/salas-semanal, acá no hay una persona logueada cuyo huso
    // horario importe — es una pantalla física fija en Chile, así que "hoy" y "ahora" van
    // fijados a esa zona (ver `hoyYAhoraChile`), no a la del servidor.
    const { hoyISO, ahoraHHMM } = hoyYAhoraChile(new Date())
@@ -163,7 +165,10 @@ export default defineEventHandler(async (event) => {
          sesionParalelo: {
             include: {
                paralelo: {
-                  include: { asignaturaPlan: { include: { asignatura: true, plan: { include: { carrera: true } } } } },
+                  include: {
+                     asignaturaPlan: { include: { asignatura: true, plan: { include: { carrera: true } } } },
+                     asignaturaEquivalente: true,
+                  },
                },
             },
          },
@@ -181,6 +186,7 @@ export default defineEventHandler(async (event) => {
 
    for (const r of reservas) {
       const paralelo = r.sesionParalelo?.paralelo ?? null
+      const mostrada = paralelo ? asignaturaVisibleParalelo(paralelo) : null
       const inicio = aHora(r.inicio)
       const fin = aHora(r.fin)
 
@@ -193,14 +199,14 @@ export default defineEventHandler(async (event) => {
       crudas.push({
          id: r.id,
          salaCodigo: r.salaCodigo,
-         titulo: r.titulo,
+         titulo: paralelo ? tituloReservaSesion(paralelo) : r.titulo,
          subtitulo: r.subtitulo,
          esClase: TIPOS_CLASE.includes(r.tipoReserva.nombre),
-         asignaturaCodigo: paralelo?.asignaturaPlan.asignatura.codigo ?? null,
+         // La asignatura que se muestra: la equivalente si el paralelo se programó desde una.
+         asignaturaCodigo: mostrada?.codigo ?? null,
          // Nombre corto si la asignatura tiene uno definido, si no el completo — mismo criterio
-         // que /reservas/horario (ver `nombreAsignaturaDe`).
-         asignaturaNombre:
-            paralelo?.asignaturaPlan.asignatura.nombreCorto ?? paralelo?.asignaturaPlan.asignatura.nombre ?? null,
+         // que /horario/salas-semanal (ver `nombreAsignaturaDe`).
+         asignaturaNombre: mostrada ? (mostrada.nombreCorto ?? mostrada.nombre) : null,
          paraleloCodigo: paralelo?.codigo ?? null,
          carreraNombre: paralelo?.asignaturaPlan.plan.carrera.nombre ?? null,
          tipoReservaNombre: r.tipoReserva.nombre,

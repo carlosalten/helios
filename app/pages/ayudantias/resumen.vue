@@ -2,6 +2,7 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { AyudantiaResumen } from '~/types/ayudantia'
 import { DIAS_SEMANA } from '~/types/dia'
+import type { Semestre } from '~/types/semestre'
 
 const { data: ayudantias, status } = await useFetch<AyudantiaResumen[]>('/api/ayudantias/resumen')
 
@@ -71,14 +72,97 @@ const columnas: TableColumn<AyudantiaResumen>[] = [
    { accessorKey: 'salaCodigo', header: 'Sala' },
    { id: 'horario', header: 'Horario' },
 ]
+
+/* ── Exportar CSV ───────────────────────────────────────────
+   Independiente de los filtros de la tabla: el modal pide semestre (por defecto el vigente) y
+   plan, y exporta las ayudantías de los paralelos de ese semestre. Solo se ofrecen los planes
+   que tienen ayudantías en el semestre elegido. */
+const { data: semestres } = await useFetch<Semestre[]>('/api/semestres')
+const { esSemestreSeleccionable } = useVisibilidadSemestre()
+
+const modalExportarAbierto = ref(false)
+const semestreExportar = ref<number | undefined>(undefined)
+const planExportar = ref<number | '__todos__'>('__todos__')
+
+const semestresExportables = computed(() => (semestres.value ?? []).filter(esSemestreSeleccionable))
+const itemsSemestreExportar = computed(() =>
+   semestresExportables.value.map((s) => ({ label: s.vigente ? `${s.nombre} (vigente)` : s.nombre, value: s.id }))
+)
+
+const ayudantiasSemestreExportar = computed(() =>
+   (ayudantias.value ?? []).filter((a) => a.semestreId === semestreExportar.value)
+)
+const itemsPlanExportar = computed(() => {
+   const vistos = new Map<number, string>()
+   for (const a of ayudantiasSemestreExportar.value) {
+      if (!vistos.has(a.planId)) vistos.set(a.planId, `${a.carreraNombre} · Plan N°${a.planNumero}`)
+   }
+   return [
+      { label: 'Todos los planes', value: '__todos__' as const },
+      ...Array.from(vistos, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label)),
+   ]
+})
+const ayudantiasExportar = computed(() =>
+   planExportar.value === '__todos__'
+      ? ayudantiasSemestreExportar.value
+      : ayudantiasSemestreExportar.value.filter((a) => a.planId === planExportar.value)
+)
+
+// Al cambiar de semestre el plan elegido puede no tener ayudantías en el nuevo: vuelve a "Todos".
+watch(semestreExportar, () => {
+   planExportar.value = '__todos__'
+})
+
+function abrirExportar() {
+   semestreExportar.value = semestresExportables.value.find((s) => s.vigente)?.id ?? semestresExportables.value[0]?.id
+   planExportar.value = '__todos__'
+   modalExportarAbierto.value = true
+}
+
+function exportarCsv() {
+   const semestre = semestresExportables.value.find((s) => s.id === semestreExportar.value)
+   const encabezados = [
+      'Carrera',
+      'Plan',
+      'Código asignatura',
+      'Asignatura',
+      'Paralelo',
+      'Ayudante',
+      'Sala',
+      'Día',
+      'Inicio',
+      'Fin',
+   ]
+   const filas = ayudantiasExportar.value.map((a) => [
+      a.carreraNombre,
+      `Plan N°${a.planNumero}`,
+      a.asignaturaCodigo,
+      a.asignaturaNombre,
+      a.paraleloCodigo,
+      a.ayudanteNombre ?? 'Sin asignar',
+      a.salaCodigo,
+      nombreDia(a.diaSemana),
+      a.inicio,
+      a.fin,
+   ])
+   const plan = ayudantiasExportar.value.find((a) => a.planId === planExportar.value)
+   const sufijoPlan = plan ? `-${plan.carreraCodigo}-plan-${plan.planNumero}` : ''
+   descargarCsv(`ayudantias-${semestre?.nombre ?? 'semestre'}${sufijoPlan}.csv`, encabezados, filas)
+   modalExportarAbierto.value = false
+}
 </script>
 
 <template>
    <div class="space-y-6">
-      <p class="text-sm text-usm-text-muted dark:text-slate-400">
-         Resumen de todas las ayudantías agendadas desde <strong>Ayudantías → Horario de ayudantías</strong>: carrera,
-         asignatura, paralelo, ayudante y horario asignado.
-      </p>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+         <p class="text-sm text-usm-text-muted dark:text-slate-400">
+            Resumen de todas las ayudantías agendadas desde <strong>Ayudantías → Horario de ayudantías</strong>:
+            carrera, asignatura, paralelo, ayudante y horario asignado.
+         </p>
+         <UButton icon="i-lucide-download" variant="outline" color="success" class="shrink-0" @click="abrirExportar">
+            Exportar CSV
+         </UButton>
+      </div>
 
       <TableSkeleton v-if="status === 'pending'" :rows="6" />
 
@@ -140,14 +224,55 @@ const columnas: TableColumn<AyudantiaResumen>[] = [
                <span>{{ ayudantiasFiltradas.length }} ayudantía{{ ayudantiasFiltradas.length !== 1 ? 's' : '' }}</span>
             </div>
 
-            <div v-if="ayudantiasFiltradas.length > porPagina" class="flex justify-center">
-               <UPagination
-                  v-model:page="paginaActual"
-                  :total="ayudantiasFiltradas.length"
-                  :items-per-page="porPagina"
-               />
-            </div>
+            <PaginacionTabla
+               v-model:page="paginaActual"
+               v-model:por-pagina="porPagina"
+               :total="ayudantiasFiltradas.length"
+            />
          </div>
       </template>
+
+      <UModal v-model:open="modalExportarAbierto" title="Exportar ayudantías a CSV" :ui="{ footer: 'justify-end' }">
+         <template #body>
+            <UForm id="form-exportar-ayudantias" :state="{}" class="space-y-4" @submit="exportarCsv">
+               <UFormField label="Semestre" name="semestre">
+                  <USelect
+                     v-model="semestreExportar"
+                     :items="itemsSemestreExportar"
+                     value-key="value"
+                     placeholder="Selecciona un semestre"
+                     class="w-full"
+                  />
+               </UFormField>
+               <UFormField label="Plan" name="plan">
+                  <USelect v-model="planExportar" :items="itemsPlanExportar" value-key="value" class="w-full" />
+               </UFormField>
+               <p class="text-xs text-usm-text-muted dark:text-slate-400">
+                  {{ ayudantiasExportar.length }} ayudantía{{ ayudantiasExportar.length !== 1 ? 's' : '' }} a exportar.
+               </p>
+            </UForm>
+         </template>
+         <template #footer>
+            <UButton
+               variant="ghost"
+               color="neutral"
+               @click="
+                  () => {
+                     modalExportarAbierto = false
+                  }
+               "
+            >
+               Cancelar
+            </UButton>
+            <UButton
+               type="submit"
+               form="form-exportar-ayudantias"
+               icon="i-lucide-download"
+               :disabled="!ayudantiasExportar.length"
+            >
+               Exportar
+            </UButton>
+         </template>
+      </UModal>
    </div>
 </template>

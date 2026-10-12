@@ -27,7 +27,7 @@ const [
    useFetch<string[]>('/api/reservas/mis-salas-encargado'),
 ])
 
-const { puedeCrear, puedeEditar } = usePermiso('/reservas/horario')
+const { puedeCrear, puedeEditar } = usePermiso('/horario/salas-semanal')
 
 // Alcance para MODIFICAR (editar/mover/cortar/borrar) una reserva ya existente — mismas
 // reglas que server/utils/alcanceReservas.ts, para que la UI no ofrezca acciones que el
@@ -62,11 +62,10 @@ function puedeModificarReserva(reserva: Reserva) {
 // server/utils/alcanceReservas.ts (`puedeSuspenderReserva`).
 //
 // A diferencia de editar/mover/borrar, acá NO se excluyen las tarjetas fusionadas (2+ bloques
-// contiguos de una misma clase, ver `esClaseFusionada`): suspender solo alterna la ocurrencia
-// puntual que la tarjeta representa (el primer bloque) y no corrompe nada — en cuanto esa
-// ocurrencia queda con un `suspendida` distinto al resto, `fusionarClasesContiguas` deja de
-// fusionarla con las siguientes y la grilla la separa sola. Por eso cualquier reserva se puede
-// suspender sin importar su tipo (Clase incluida) ni si está fusionada.
+// contiguos de una misma clase, ver `esClaseFusionada`): suspender una tarjeta fusionada
+// suspende (o reactiva) TODOS sus bloques de una vez — `alternarSuspendida` manda sus ids al
+// endpoint. Por eso cualquier reserva se puede suspender sin importar su tipo (Clase incluida)
+// ni si está fusionada.
 function puedeSuspenderReserva(reserva: Reserva) {
    if (!puedeEditar.value || !user.value) return false
    if (user.value.rol === 'Administrador' || user.value.rol === 'Jefe de Carrera') return true
@@ -341,10 +340,13 @@ function bloqueNumeroDe(horaISO: string) {
 // mismo paralelo en una sola tarjeta que abarca desde el inicio del primero hasta el fin del
 // último, para no mostrar una clase de 3 horas como 3 cuadros separados. Solo aplica a
 // reservas de clase (`sesionParalelo`): Ayudantías y demás tipos de reserva pasan tal cual.
-// Además de fusionar, registra en `idsFusionados` el id de toda tarjeta resultante de 2+
-// bloques — `esClaseFusionada` usa ese registro para bloquear editar/mover/suspender/borrar
-// sobre esa tarjeta (ver el comentario en `puedeModificarReserva`).
-function fusionarClasesContiguas(reservasDia: Reserva[], idsFusionados: Set<number>): Reserva[] {
+// No se fusionan bloques con distinto profesor (`personaId`, el responsable de la reserva):
+// la tarjeta muestra uno solo y se perdería quién dicta el resto.
+// Además de fusionar, registra en `idsFusionados` (id de la tarjeta → ids de TODOS sus bloques)
+// la tarjeta resultante de 2+ bloques: `esClaseFusionada` lo usa para bloquear editar/mover/
+// borrar sobre esa tarjeta (ver el comentario en `puedeModificarReserva`), y suspender manda
+// todos los ids para suspender/reactivar la tarjeta completa (ver `alternarSuspendida`).
+function fusionarClasesContiguas(reservasDia: Reserva[], idsFusionados: Map<number, number[]>): Reserva[] {
    const porParalelo = new Map<number, Reserva[]>()
    const resto: Reserva[] = []
    for (const r of reservasDia) {
@@ -358,8 +360,8 @@ function fusionarClasesContiguas(reservasDia: Reserva[], idsFusionados: Set<numb
       porParalelo.set(paraleloId, grupo)
    }
 
-   function cerrarGrupo(actual: Reserva, cantidad: number) {
-      if (cantidad > 1) idsFusionados.add(actual.id)
+   function cerrarGrupo(actual: Reserva, ids: number[]) {
+      if (ids.length > 1) idsFusionados.set(actual.id, ids)
       return actual
    }
 
@@ -368,22 +370,22 @@ function fusionarClasesContiguas(reservasDia: Reserva[], idsFusionados: Set<numb
       const ordenado = [...grupo].sort((a, b) => horaAMinutos(horaDeISO(a.inicio)) - horaAMinutos(horaDeISO(b.inicio)))
       let actual: Reserva | null = null
       let bloqueAnterior: number | null = null
-      let cantidad = 0
+      let ids: number[] = []
       for (const r of ordenado) {
          const bloqueActual = bloqueNumeroDe(r.inicio)
          const esContiguo =
             actual && bloqueAnterior != null && bloqueActual != null && bloqueActual === bloqueAnterior + 1
-         if (esContiguo && actual!.suspendida === r.suspendida) {
+         if (esContiguo && actual!.suspendida === r.suspendida && actual!.personaId === r.personaId) {
             actual = { ...actual!, fin: r.fin }
-            cantidad++
+            ids.push(r.id)
          } else {
-            if (actual) fusionadas.push(cerrarGrupo(actual, cantidad))
+            if (actual) fusionadas.push(cerrarGrupo(actual, ids))
             actual = r
-            cantidad = 1
+            ids = [r.id]
          }
          bloqueAnterior = bloqueActual
       }
-      if (actual) fusionadas.push(cerrarGrupo(actual, cantidad))
+      if (actual) fusionadas.push(cerrarGrupo(actual, ids))
    }
    return fusionadas
 }
@@ -393,7 +395,7 @@ function fusionarClasesContiguas(reservasDia: Reserva[], idsFusionados: Set<numb
 // tarjetas fusionadas (ver `puedeModificarReserva`).
 const fusionDia = computed(() => {
    const porDia = new Map<number, Reserva[]>()
-   const idsFusionados = new Set<number>()
+   const idsFusionados = new Map<number, number[]>()
    for (const dia of DIAS_SEMANA) {
       const fecha = fechasSemana.value.get(dia.valor)
       const fechaISO = fecha ? formatFechaISO(fecha) : ''
@@ -738,6 +740,11 @@ function abrirSuspender(reserva: Reserva) {
    confirmSuspenderMostrar.value = true
 }
 
+// Cantidad de bloques de la tarjeta a suspender (1 si no es una tarjeta fusionada).
+const bloquesASuspender = computed(
+   () => fusionDia.value.idsFusionados.get(reservaASuspender.value?.id ?? -1)?.length ?? 1
+)
+
 async function confirmarSuspender() {
    if (!reservaASuspender.value) return
    const ok = await alternarSuspendida(reservaASuspender.value)
@@ -747,7 +754,12 @@ async function confirmarSuspender() {
 async function alternarSuspendida(reserva: Reserva): Promise<boolean> {
    suspendiendo.value = true
    try {
-      await $fetch(`/api/reservas/${reserva.id}/suspender`, { method: 'PATCH' })
+      // Tarjeta fusionada: suspende/reactiva todos sus bloques, no solo el primero.
+      const bloques = fusionDia.value.idsFusionados.get(reserva.id)
+      await $fetch(`/api/reservas/${reserva.id}/suspender`, {
+         method: 'PATCH',
+         body: bloques ? { ids: bloques.filter((id) => id !== reserva.id) } : undefined,
+      })
       await refrescarReservas()
       toast.add({
          title: reserva.suspendida ? 'Reserva reactivada' : 'Reserva suspendida',
@@ -1251,7 +1263,7 @@ function profesorDe(reserva: Reserva) {
 // Nombre a mostrar de la asignatura de una reserva de sesión de clases: el corto si la
 // asignatura tiene uno definido, si no el completo. Mismo criterio en /reservas/imprimir.
 function nombreAsignaturaDe(reserva: Reserva) {
-   const asignatura = reserva.sesionParalelo?.paralelo.asignaturaPlan.asignatura
+   const asignatura = reserva.sesionParalelo ? asignaturaVisible(reserva.sesionParalelo.paralelo) : null
    return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
 }
 
@@ -1339,7 +1351,7 @@ const { conectado: enVivo } = useHorarioTiempoReal(async (eventos) => {
       color: 'info',
       icon: 'i-lucide-refresh-cw',
    })
-}, '/reservas/horario')
+}, '/horario/salas-semanal')
 
 // Al cerrar el modal (o soltar el arrastre) se aplica el refresco que haya quedado pendiente.
 watch(editandoAlgo, async (ocupado) => {
@@ -1906,7 +1918,8 @@ watch(editandoAlgo, async (ocupado) => {
                reservaASuspender
                   ? formatFechaDisplay(new Date(`${reservaASuspender.fecha.slice(0, 10)}T00:00:00`))
                   : ''
-            }}? Queda destacada en rojo en la grilla, el reporte impreso y la pantalla pública, pero no se borra.
+            }}<template v-if="bloquesASuspender > 1"> ({{ bloquesASuspender }} bloques seguidos)</template>? Queda
+            destacada en rojo en la grilla, el reporte impreso y la pantalla pública, pero no se borra.
          </p>
       </ConfirmModal>
 

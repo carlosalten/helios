@@ -11,6 +11,35 @@ export interface PermisoResumen {
    acciones: string[]
 }
 
+// En la cookie de sesión cada ruta va como un string "ruta:letras" (p. ej. "/cursos:vceb") en
+// vez de { ruta, acciones[] }: nuxt-auth-utils guarda la sesión completa en la cookie, que el
+// browser descarta si pasa de 4096 bytes, y el rol con más permisos ya la superaba.
+const LETRA_ACCION: Record<string, string> = {
+   ver: 'v',
+   crear: 'c',
+   editar: 'e',
+   borrar: 'b',
+   contrasena: 'k',
+   cambiarrol: 'r',
+   activar: 'a',
+}
+
+export function codificarPermisosSesion(permisos: PermisoResumen[]): string[] {
+   return permisos.map(({ ruta, acciones }) => `${ruta}:${acciones.map((a) => LETRA_ACCION[a] ?? '').join('')}`)
+}
+
+export function tienePermisoSesion(permisosSesion: string[] | undefined, ruta: string, accion: string) {
+   const letra = LETRA_ACCION[accion]
+   if (!letra) return false
+   const prefijo = `${ruta}:`
+   // `typeof`: una sesión iniciada antes de este formato trae objetos en vez de strings.
+   return (
+      permisosSesion?.some(
+         (p) => typeof p === 'string' && p.startsWith(prefijo) && p.slice(prefijo.length).includes(letra)
+      ) ?? false
+   )
+}
+
 // Acciones genéricas CRUD, válidas para casi todas las rutas.
 export const ACCIONES_PERMISO = ['ver', 'crear', 'editar', 'borrar'] as const
 export type AccionPermiso = (typeof ACCIONES_PERMISO)[number]
@@ -49,6 +78,8 @@ export const RUTAS_PERMISO = [
    '/horario',
    '/horario/profesor',
    '/horario/profesores',
+   '/horario/salas-semanal',
+   '/horario/salas-semestral',
    '/paralelos',
    '/paralelos/asignacion',
    '/personas/gestion',
@@ -59,7 +90,6 @@ export const RUTAS_PERMISO = [
    '/reportes/bloques-libres',
    '/reportes/topes-horario',
    '/reportes/uso-salas',
-   '/reservas/horario',
    '/reservas/imprimir',
    '/reservas/resumen',
    '/reservas/tipos',
@@ -68,6 +98,7 @@ export const RUTAS_PERMISO = [
    '/salas/pantallas',
    '/salas/tipos',
    '/semestres',
+   '/semestres/resumen',
    '/titulaciones/asignacion-guia',
    '/titulaciones/estudiantes',
    '/titulaciones/grupos',

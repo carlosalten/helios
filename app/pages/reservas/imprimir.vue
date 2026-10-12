@@ -17,7 +17,7 @@ const [{ data: semestres }, { data: bloquesRaw }, { data: salas }, { data: misSa
 ])
 
 /* ── Semestre: solo define la plantilla horaria (bloques) del cuadro impreso — mismo
-   criterio que /reservas/horario, sin selector: se usa el vigente automáticamente. ── */
+   criterio que /horario/salas-semanal, sin selector: se usa el vigente automáticamente. ── */
 const semestreSeleccionadoId = ref<number>()
 watchEffect(() => {
    if (semestreSeleccionadoId.value == null && semestres.value?.length) {
@@ -30,7 +30,7 @@ const bloquesSemestre = computed(() =>
       .sort((a, b) => a.numero - b.numero)
 )
 
-/* ── Salas: las mismas visibles que en /reservas/horario — acotadas a las asignadas
+/* ── Salas: las mismas visibles que en /horario/salas-semanal — acotadas a las asignadas
    (EncargadoSala) para cualquier rol que no sea Administrador, que ve todas. El usuario elige
    cuáles imprimir con checkboxes. ── */
 const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? []))
@@ -88,7 +88,7 @@ watch(salasVisibles, (visibles) => {
 // Orden de impresión: el mismo de la lista (código), no el de selección.
 const salasAImprimir = computed(() => salasVisibles.value.filter((s) => salasSeleccionadas.value.has(s.codigo)))
 
-/* ── Fin de semana y anchos de columna del cuadro impreso — igual que /reservas/horario. ── */
+/* ── Fin de semana y anchos de columna del cuadro impreso — igual que /horario/salas-semanal. ── */
 const mostrarFinSemana = ref(false)
 const diasVisibles = computed(() =>
    mostrarFinSemana.value ? DIAS_SEMANA : DIAS_SEMANA.filter((d) => !DIAS_FIN_SEMANA.includes(d.valor))
@@ -96,7 +96,7 @@ const diasVisibles = computed(() =>
 const ANCHO_COLUMNA_BLOQUE_IMPRESION = 11
 const anchoColumnaDiaImpresion = computed(() => (100 - ANCHO_COLUMNA_BLOQUE_IMPRESION) / diasVisibles.value.length)
 
-/* ── Navegación por semana — igual que /reservas/horario. ── */
+/* ── Navegación por semana — igual que /horario/salas-semanal. ── */
 function inicioDeSemana(d: Date) {
    const copia = new Date(d)
    copia.setHours(0, 0, 0, 0)
@@ -191,7 +191,7 @@ async function cargarReservas() {
 }
 watch([salasSeleccionadas, semanaInicio], cargarReservas, { immediate: true, deep: true })
 
-/* ── Cuadro impreso por sala — mismo criterio que /reservas/horario: una fila por bloque
+/* ── Cuadro impreso por sala — mismo criterio que /horario/salas-semanal: una fila por bloque
    horario del semestre, agrupando los bloques contiguos de una misma actividad en un solo
    recuadro con `rowspan`. Ver ese archivo para el detalle de por qué se arma así. ── */
 interface EntradaImpresion {
@@ -318,7 +318,7 @@ function entradasImpresionDe(salaCodigo: string, diaValor: number, idxBloque: nu
 }
 
 // Clases y ayudantías se describen por lo que se dicta; el resto, por su tipo — igual que
-// /reservas/horario.
+// /horario/salas-semanal.
 const TIPOS_CLASE = ['Clase', 'Ayudantía']
 function esClase(reserva: Reserva) {
    return TIPOS_CLASE.includes(reserva.tipoReserva.nombre)
@@ -328,22 +328,22 @@ function profesorDe(reserva: Reserva) {
 }
 
 // Nombre a mostrar de la asignatura: el corto si la asignatura tiene uno definido, si no el
-// completo. Mismo criterio en /reservas/horario.
+// completo. Mismo criterio en /horario/salas-semanal.
 function nombreAsignaturaDe(reserva: Reserva) {
-   const asignatura = reserva.sesionParalelo?.paralelo.asignaturaPlan.asignatura
+   const asignatura = reserva.sesionParalelo ? asignaturaVisible(reserva.sesionParalelo.paralelo) : null
    return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
 }
 
 // Carrera de una reserva: de la clase si es una sesión de paralelo, del paralelo si es una
 // Ayudantía creada desde /ayudantias (ver Reserva.paralelo) — cualquier otro tipo de reserva no
-// tiene carrera asociada. Mismo criterio en /reservas/horario.
+// tiene carrera asociada. Mismo criterio en /horario/salas-semanal.
 function carreraDe(reserva: Reserva) {
    const carrera =
       reserva.sesionParalelo?.paralelo.asignaturaPlan.plan.carrera ?? reserva.paralelo?.asignaturaPlan.plan.carrera
    return carrera?.nombreCorto ?? null
 }
 
-// Mismo criterio de color que /reservas/horario: cada paralelo lleva el suyo (o uno derivado
+// Mismo criterio de color que /horario/salas-semanal: cada paralelo lleva el suyo (o uno derivado
 // de su identificador si aún no tiene) para poder seguir una asignatura de un vistazo.
 function colorImpresion(reserva: Reserva) {
    if (!esClase(reserva)) return reserva.tipoReserva.color
@@ -489,7 +489,7 @@ function imprimirHorarios() {
       </div>
    </div>
 
-   <!-- Versión imprimible: una sala por hoja, mismo formato que /reservas/horario. -->
+   <!-- Versión imprimible: una sala por hoja, mismo formato que /horario/salas-semanal. -->
    <div
       v-for="(sala, idx) in salasAImprimir"
       :key="sala.codigo"
@@ -584,7 +584,7 @@ function imprimirHorarios() {
 
 <style>
 /* Tailwind no tiene utilidad para @page — única forma de fijar tamaño/márgenes de la hoja.
-   Igual que /reservas/horario. */
+   Igual que /horario/salas-semanal. */
 @page {
    size: letter portrait;
    margin: 0.635cm;

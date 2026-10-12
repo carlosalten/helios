@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
-import type { PermisoResumen } from '~/types/permiso'
+import { codificarPermisosSesion, type PermisoResumen } from '~/types/permiso'
 
 // Login consolidado: verifica credenciales contra Persona (la misma tabla que la agenda
 // académica) y crea la sesión Nuxt en un solo paso. Sin secreto interno ni llamadas entre
@@ -8,68 +8,23 @@ import type { PermisoResumen } from '~/types/permiso'
 const LoginSchema = z.object({
    email: z.string().trim().toLowerCase().email(),
    password: z.string().min(1),
-   // Token de Cloudflare Turnstile. Ausente en el primer intento (siempre permitido sin
-   // captcha); requerido desde el segundo — ver el chequeo de `yaFalloAntes` más abajo.
+   // Token de Cloudflare Turnstile. Ausente en el primer intento; se exige desde el 2do fallo
+   // de la cuenta o si la IP acumula fallos (ver server/utils/limiteLogin.ts).
    turnstileToken: z.string().optional(),
 })
 
-const VENTANA_MS = 15 * 60 * 1000 // 15 minutos
-const MAX_POR_IP = 5 // intentos (éxitos o fallos) por IP
-const MAX_FALLOS_POR_EMAIL = 10 // fallos por cuenta (fuerza bruta distribuida)
-
 export default defineEventHandler(async (event) => {
-   // Límite por IP: frena el escaneo masivo desde un mismo origen. `X-Forwarded-For` solo se
-   // usa cuando hay un proxy de confianza (runtimeConfig.trustProxy); expuesta directa a
-   // internet, esa cabecera la falsifica el cliente y permitiría rotar la IP para evadir el
-   // límite. Con trustProxy=false se usa la IP real de la conexión.
-   const { trustProxy } = useRuntimeConfig(event)
-   const ip = getRequestIP(event, { xForwardedFor: trustProxy }) ?? 'desconocido'
-   const claveIp = `login:ip:${ip}`
-   const limiteIp = limitarTasa(claveIp, { max: MAX_POR_IP, ventanaMs: VENTANA_MS })
-   if (!limiteIp.permitido) {
-      const minutos = Math.ceil(limiteIp.reintentarEnSeg / 60)
-      throw createError({ statusCode: 429, message: `Demasiados intentos. Reintenta en ${minutos} minuto(s).` })
-   }
-
    const body = await readBody(event)
    const result = LoginSchema.safeParse(body)
    if (!result.success) throw createError({ statusCode: 401, message: 'Credenciales no válidas' })
 
    const { email, password, turnstileToken } = result.data
-   const claveEmail = `login:email:${email}`
 
-   // Límite por cuenta: protege un email aunque el atacante rote de IP.
-   const limiteEmail = excedeLimite(claveEmail, MAX_FALLOS_POR_EMAIL)
-   if (!limiteEmail.permitido) {
-      const minutos = Math.ceil(limiteEmail.reintentarEnSeg / 60)
-      throw createError({
-         statusCode: 429,
-         message: `Cuenta bloqueada temporalmente por intentos fallidos. Reintenta en ${minutos} minuto(s).`,
-      })
-   }
-
-   // Captcha desde el 2do intento fallido para este email: el primer error de contraseña
-   // nunca lo exige (no hay que incomodar a quien solo se equivocó una vez), pero de ahí en
-   // adelante cierra el hueco que dejaba libre para probar contraseñas por fuerza bruta.
-   // `data.requiereCaptcha` le indica al frontend (login.vue) que muestre el widget.
-   const yaFalloAntes = !excedeLimite(claveEmail, 1).permitido
-   if (yaFalloAntes) {
-      if (!turnstileToken) {
-         throw createError({
-            statusCode: 401,
-            message: 'Verificación de seguridad requerida.',
-            data: { requiereCaptcha: true },
-         })
-      }
-      const resultadoCaptcha = await verifyTurnstileToken(turnstileToken, event)
-      if (!resultadoCaptcha.success) {
-         throw createError({
-            statusCode: 401,
-            message: 'No se pudo verificar que no eres un robot. Vuelve a intentarlo.',
-            data: { requiereCaptcha: true },
-         })
-      }
-   }
+   // Anti fuerza bruta: bloqueo solo por cuenta; por IP, captcha en vez de bloqueo (varias
+   // personas comparten IP en la misma wifi). Ver server/utils/limiteLogin.ts.
+   const limite = crearLimiteLogin('login', ipDelCliente(event), email)
+   limite.verificarCuentaNoBloqueada()
+   await limite.exigirCaptchaSiCorresponde(event, turnstileToken)
 
    const persona = await prisma.persona.findUnique({
       where: { email },
@@ -79,21 +34,19 @@ export default defineEventHandler(async (event) => {
    // Sin contraseña asignada = sin cuenta de acceso (solo agenda/reservas): mismo error
    // genérico que credenciales inválidas, para no filtrar cuáles emails son personas.
    if (!persona || !persona.password) {
-      registrarFallo(claveEmail, VENTANA_MS)
+      limite.anotarFallo()
       throw createError({ statusCode: 401, message: 'Credenciales no válidas' })
    }
 
    const passwordValido = await bcrypt.compare(password, persona.password)
    if (!passwordValido) {
-      registrarFallo(claveEmail, VENTANA_MS)
+      limite.anotarFallo()
       throw createError({ statusCode: 401, message: 'Credenciales no válidas' })
    }
 
    if (!persona.activo) throw createError({ statusCode: 401, message: 'Acceso al sistema suspendido.' })
 
-   // Login exitoso: limpiar contadores de IP y de la cuenta.
-   reiniciarTasa(claveIp)
-   reiniciarTasa(claveEmail)
+   limite.anotarExito()
 
    const rol = persona.rol.nombre
 
@@ -124,13 +77,16 @@ export default defineEventHandler(async (event) => {
          rol,
          jerarquiaRol: persona.rol.jerarquia,
          puedeSuspenderCualquierReserva: persona.rol.suspenderCualquierReserva,
+         puedeVerSemestreBorrador: persona.rol.verSemestreBorrador,
          personaId: persona.id,
-         permisos,
+         permisos: codificarPermisosSesion(permisos),
          carrerasJefe,
          carrerasAsignadas,
          temaPreferido: persona.temaPreferido,
          mostrarTopesEspejo: persona.mostrarTopesEspejo,
          colorTopesEspejo: persona.colorTopesEspejo,
+         semestrePorDefecto: persona.semestrePorDefecto,
+         registrosPorPagina: persona.registrosPorPagina,
          emoji: persona.emoji,
       },
    })

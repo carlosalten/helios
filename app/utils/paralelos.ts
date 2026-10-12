@@ -1,3 +1,14 @@
+// Asignatura que se MUESTRA para un paralelo: la equivalente desde la que se programó
+// (Paralelo.asignaturaEquivalente) o, si no hay, la de la malla. Solo para mostrar — la lógica
+// (bloques requeridos, espejos, duplicados) sigue usando la asignatura de la malla, que es bajo
+// la que cuelga el paralelo. Mismo criterio que `asignaturaVisibleParalelo` en el servidor.
+export function asignaturaVisible<A, E>(paralelo: {
+   asignaturaEquivalente?: E | null
+   asignaturaPlan: { asignatura: A }
+}): A | E {
+   return paralelo.asignaturaEquivalente ?? paralelo.asignaturaPlan.asignatura
+}
+
 // Un mismo curso no puede tener dos paralelos de la misma asignatura con el mismo código de
 // paralelo (ej. dos paralelos "300" de EIN125-B en "1er año"). Usado por app/pages/paralelos/
 // index.vue y app/pages/paralelos/asignacion.vue antes de crear/editar/mover un paralelo.
