@@ -90,6 +90,7 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 - **`plan_cantidad_semestres_rango`** — en `plan`, `cantidad_semestres` entre 4 y 12 (default 4).
 - **`curso_numero_positivo`** — en `curso`, `numero >= 1`.
 - **`tt_grupo_numero_positivo`** — en `tt_grupo`, `numero >= 1`. Además, `numero` es único junto con `proceso_id` (`tt_grupo_proceso_id_numero_key`): no se puede repetir dentro del mismo proceso, pero sí entre procesos distintos.
+- **`persona_registros_por_pagina_valido`** — en `persona`, `registros_por_pagina` ∈ {10, 20, 30, 40, 50} (default 20; mismas opciones que `OPCIONES_REGISTROS_POR_PAGINA`).
 - **`curso_numero_semestre_rango`** — en `curso`, `numero_semestre` entre 1 y 12.
 - **`paralelo_cupo_rango`** — en `paralelo`, `cupo` entre 0 y 100.
 - **`feriado_horas_validas`** — en `feriado`, `hora_inicio`/`hora_termino` van ambos `null` (feriado de día completo) o ambos con valor y `hora_termino > hora_inicio` (feriado parcial).
@@ -99,11 +100,11 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 
 > Estas constraints se crearon con migraciones SQL a mano y **no** están representadas en `schema.prisma` (Prisma no modela CHECK/EXCLUDE). Un `prisma migrate reset` las reconstruye porque siguen en `prisma/migrations/`, pero `prisma migrate diff` contra el datamodel las reporta como "drift" esperado.
 
-> `Reserva` **permite intencionalmente** horario solapado (no existe una constraint `reserva_sin_solapamiento`): en `/reservas/horario`, las reservas que se solapan en el tiempo para una misma sala se agrupan en columnas una al lado de la otra en vez de rechazarse.
+> `Reserva` **permite intencionalmente** horario solapado (no existe una constraint `reserva_sin_solapamiento`): en `/horario/salas-semanal`, las reservas que se solapan en el tiempo para una misma sala se agrupan en columnas una al lado de la otra en vez de rechazarse.
 
-> `Reserva.suspendida` (`PATCH /api/reservas/:id/suspender`) marca una ocurrencia puntual como suspendida **sin borrar la fila** — sigue tomando la sala en la BD, pero se destaca en rojo (`#C8102E`) en `/reservas/horario` (grilla interactiva e impresión) y en la pantalla pública (`/pantallas/<codigo>`, con la etiqueta "Suspendida"). Solo afecta esa ocurrencia: no tiene el flujo "esta y las siguientes" que sí tienen editar/borrar — suspender una serie recurrente completa es ocurrencia por ocurrencia. Borrar (`DELETE /api/reservas/:id`) sigue siendo una operación aparte, que sí elimina la fila.
+> `Reserva.suspendida` (`PATCH /api/reservas/:id/suspender`) marca una ocurrencia puntual como suspendida **sin borrar la fila** — sigue tomando la sala en la BD, pero se destaca en rojo (`#C8102E`) en `/horario/salas-semanal` (grilla interactiva e impresión) y en la pantalla pública (`/pantallas/<codigo>`, con la etiqueta "Suspendida"). Solo afecta esa ocurrencia: no tiene el flujo "esta y las siguientes" que sí tienen editar/borrar — suspender una serie recurrente completa es ocurrencia por ocurrencia. Borrar (`DELETE /api/reservas/:id`) sigue siendo una operación aparte, que sí elimina la fila.
 
-> `Reserva.publica` (default `true`) controla si la reserva se muestra en vistas de cara al público: la vista impresa de `/reservas/horario` y la pantalla pública (`/pantallas/<codigo>`). En `false` la reserva sigue tomando la sala en la BD y se ve igual que cualquier otra en la grilla interactiva de `/reservas/horario`, pero queda fuera del reporte en papel y de `/pantallas/<codigo>` — para bloqueos internos (p. ej. mantenimiento) que no corresponde anunciar.
+> `Reserva.publica` (default `true`) controla si la reserva se muestra en vistas de cara al público: la vista impresa de `/horario/salas-semanal` y la pantalla pública (`/pantallas/<codigo>`). En `false` la reserva sigue tomando la sala en la BD y se ve igual que cualquier otra en la grilla interactiva de `/horario/salas-semanal`, pero queda fuera del reporte en papel y de `/pantallas/<codigo>` — para bloqueos internos (p. ej. mantenimiento) que no corresponde anunciar.
 
 ## Backend — API Nitro
 
@@ -188,7 +189,7 @@ runtimeConfig: {
 
 - **Cookie de sesión**: `sameSite: 'lax'`, `httpOnly`, `secure` (prod), `maxAge: 8h`.
 - **Middleware CSRF** (`server/middleware/origen.ts`): rechaza (403) mutaciones cuyo `Origin`/`Referer` no coincida con el host.
-- **Rate-limit** en `server/utils/rateLimit.ts`, usado en el login: por IP (5 intentos / 15 min) y por email (10 fallos / 15 min) → 429.
+- **Anti fuerza bruta en los logins** (`server/utils/limiteLogin.ts`, sobre los contadores en memoria de `server/utils/rateLimit.ts`), ventana de 15 min contando solo fallos: **por cuenta** 10 fallos → 429, y captcha Turnstile desde el 2do intento tras un fallo; **por IP nunca se bloquea** (muchos usuarios comparten la wifi del campus), solo se exige captcha a todos desde esa IP tras 10 fallos. Un login exitoso limpia solo el contador de su cuenta.
 - **Control de acceso por rol** vía `requierePermiso` + tabla `permiso`.
 
 ## Dependencias clave

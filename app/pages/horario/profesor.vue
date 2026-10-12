@@ -15,9 +15,9 @@ const [{ data: semestres }, { data: bloquesRaw }, { data: personas }, { data: mi
    useFetch<string[]>('/api/reservas/mis-salas-encargado'),
 ])
 
-// La acción de suspender es de /reservas/horario (mismo endpoint, mismo permiso que exige el
+// La acción de suspender es de /horario/salas-semanal (mismo endpoint, mismo permiso que exige el
 // servidor) aunque se dispare desde acá — ver `puedeSuspenderEvento` más abajo.
-const { puedeEditar: puedeEditarReservas } = usePermiso('/reservas/horario')
+const { puedeEditar: puedeEditarReservas } = usePermiso('/horario/salas-semanal')
 const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? []))
 
 /* ── Semestre: define la plantilla de bloques y acota las clases ─────────── */
@@ -96,7 +96,7 @@ const rangoSemanaLabel = computed(
 
 const mostrarFinSemana = ref(false)
 // DIAS_SEMANA ya trae los 7 días; DIAS_FIN_SEMANA son solo los números (6 y 7) del fin de
-// semana, que acá se usan para ocultarlos. Mismo patrón que /horario y /reservas/horario.
+// semana, que acá se usan para ocultarlos. Mismo patrón que /horario y /horario/salas-semanal.
 const diasVisibles = computed(() =>
    mostrarFinSemana.value ? DIAS_SEMANA : DIAS_SEMANA.filter((d) => !DIAS_FIN_SEMANA.includes(d.valor))
 )
@@ -122,7 +122,7 @@ const {
 /* ── Grilla: filas = bloques del semestre, columnas = días ───────────────
    Se usan los bloques (no una grilla de minutos) porque es como se lee un horario de clases.
    Una reserva puede no calzar con un bloque: se ubica en los bloques que alcanza a cubrir y se
-   estira con `rowspan`, igual que en el reporte impreso de /reservas/horario. */
+   estira con `rowspan`, igual que en el reporte impreso de /horario/salas-semanal. */
 function horaAMinutos(hora: string) {
    const [h, m] = hora.split(':').map(Number)
    return (h ?? 0) * 60 + (m ?? 0)
@@ -166,7 +166,7 @@ function idxBloqueFin(minutos: number) {
 // que una clase de cuatro bloques llega acá como cuatro eventos idénticos seguidos. Se compara
 // también la sala: una clase que cambia de sala entre bloques no es un solo tramo. Si solo un
 // bloque está suspendido tampoco se fusiona con el resto: se perdería justo el dato de cuál
-// bloque está suspendido (ver /reservas/horario, mismo criterio).
+// bloque está suspendido (ver /horario/salas-semanal, mismo criterio).
 function mismaActividad(a: EventoAgenda, b: EventoAgenda) {
    return (
       a.titulo === b.titulo &&
@@ -278,7 +278,7 @@ function detalleHorarioSala(entrada: EntradaCelda) {
    return partes
 }
 
-// Mismo rojo que /reservas/horario para una reserva suspendida — tiene que distinguirse de un
+// Mismo rojo que /horario/salas-semanal para una reserva suspendida — tiene que distinguirse de un
 // vistazo, sin importar el color que le tocaría por su tipo o paralelo.
 const COLOR_SUSPENDIDA = '#C8102E'
 
@@ -296,7 +296,7 @@ const totalClases = computed(() => (eventos.value ?? []).filter((e) => e.tipo ==
 
 /* ── Suspender / reactivar una reserva desde la agenda del profesor ───────
    Mismo alcance que server/utils/alcanceReservas.ts (`puedeSuspenderReserva`) y
-   /reservas/horario (mismo endpoint, mismo permiso que exige el servidor): acá "reserva
+   /horario/salas-semanal (mismo endpoint, mismo permiso que exige el servidor): acá "reserva
    propia" equivale a estar viendo la propia agenda (todos los eventos de la página son del
    profesor seleccionado). Solo aplica a eventos con una fila `Reserva` real — una clase sin
    sala (evento.id empieza con "s-") no tiene nada que suspender. */
@@ -325,8 +325,8 @@ function puedeSuspenderEvento(evento: EventoAgenda) {
 
 const suspendiendo = ref<string | null>(null)
 // Reactivar no pide confirmación (deshace el estado, sin efecto destructivo); suspender sí,
-// porque la reserva pasa a mostrarse destacada en rojo acá, en /reservas/horario, su reporte
-// impreso y la pantalla pública — mismo criterio que /reservas/horario.
+// porque la reserva pasa a mostrarse destacada en rojo acá, en /horario/salas-semanal, su reporte
+// impreso y la pantalla pública — mismo criterio que /horario/salas-semanal.
 const confirmSuspenderMostrar = ref(false)
 const eventoASuspender = ref<EventoAgenda | null>(null)
 

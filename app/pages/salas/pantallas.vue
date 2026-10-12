@@ -374,13 +374,12 @@ async function confirmarEliminar() {
                </UTable>
             </div>
 
-            <div v-if="pantallasFiltradas.length > porPagina" class="mt-4 flex justify-center">
-               <UPagination
-                  v-model:page="paginaActual"
-                  :total="pantallasFiltradas.length"
-                  :items-per-page="porPagina"
-               />
-            </div>
+            <PaginacionTabla
+               v-model:page="paginaActual"
+               v-model:por-pagina="porPagina"
+               :total="pantallasFiltradas.length"
+               class="mt-4"
+            />
          </div>
 
          <!-- Panel de detalle: salas de la pantalla seleccionada -->

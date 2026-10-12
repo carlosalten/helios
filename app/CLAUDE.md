@@ -79,24 +79,23 @@ Casi toda la app exige sesión (`auth.global.ts`). Las excepciones son `/login` 
         aria-label="Editar" @click="abrirEditar(row.original)" />
   </UTooltip>
   ```
-- **UTable paginación**: toda `UTable` pagina de a 10 items usando el composable `usePaginacion` (`app/composables/usePaginacion.ts`). Nunca pasar el array completo/filtrado directo a `:data` ni reimplementar el slicing a mano. Patrón:
+- **UTable paginación**: toda `UTable` pagina con el composable `usePaginacion` (`app/composables/usePaginacion.ts`) y el pie `<PaginacionTabla>` (selector de registros por página 10–50 + `UPagination`). Nunca pasar el array completo/filtrado directo a `:data` ni reimplementar el slicing a mano. Patrón:
   ```ts
   const { paginaActual, itemsPagina, porPagina } = usePaginacion(entidadesFiltradas)
   ```
   ```vue
   <UTable :data="itemsPagina" :columns="columnas">...</UTable>
 
-  <div v-if="entidadesFiltradas.length > porPagina" class="flex justify-center">
-     <UPagination v-model:page="paginaActual" :total="entidadesFiltradas.length" :items-per-page="porPagina" />
-  </div>
+  <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="entidadesFiltradas.length" />
   ```
-  `usePaginacion` recibe un `Ref`/`ComputedRef<T[]>` (la lista ya filtrada/buscada) y devuelve `itemsPagina` (la página actual, para `:data`), `paginaActual` (para `v-model:page`) y `porPagina` (10). Resetea la página a 1 automáticamente cuando cambia el total de items (p. ej. al filtrar).
+  `usePaginacion` recibe un `Ref`/`ComputedRef<T[]>` (la lista ya filtrada/buscada) y devuelve `itemsPagina` (la página actual, para `:data`), `paginaActual` y `porPagina` (ref; arranca en `Persona.registrosPorPagina`, la preferencia del usuario en `/cuenta/preferencias`, default 20). El selector de cada tabla cambia `porPagina` solo mientras la página está abierta. Vuelve a la página 1 cuando cambia el total de items o `porPagina`. Las opciones (`OPCIONES_REGISTROS_POR_PAGINA` en `app/types/preferencias.ts`) deben coincidir con el CHECK `persona_registros_por_pagina_valido`.
 
 ## Componentes compartidos (siempre usar — nunca inline)
 
 - **`ConfirmModal`** — confirmaciones destructivas. Props: `v-model:open`, `title`, `confirm-label`, `confirm-color`, `confirm-icon`, `loading`. Emite `@confirm`.
 - **`EmptyState`** — listas vacías / placeholders. Props: `icon`, `message`, `action?`. Emite `@action`.
 - **`TableSkeleton`** — mientras `status === 'pending'`. Prop: `rows`.
+- **`PaginacionTabla`** — pie de toda tabla paginada (ver *UTable paginación*). Props: `v-model:page`, `v-model:por-pagina`, `total`.
 
 ## Indicadores de carga
 

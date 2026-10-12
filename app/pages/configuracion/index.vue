@@ -93,7 +93,7 @@ async function toggleRolHorario(rol: Rol) {
    }
 }
 
-/* ── Roles que pueden suspender cualquier reserva en /reservas/horario ──── */
+/* ── Roles que pueden suspender cualquier reserva en /horario/salas-semanal ──── */
 const togglingRolSuspender = ref<number | null>(null)
 
 async function toggleRolSuspender(rol: Rol) {
@@ -258,7 +258,7 @@ async function toggleRolVerBorrador(rol: Rol) {
             </h3>
             <p class="mt-1 text-sm text-usm-text-muted dark:text-slate-400">
                Marca qué roles pueden suspender o reactivar <strong>cualquier</strong> reserva en
-               <strong>/reservas/horario</strong>, no solo las propias. Los roles sin marcar solo pueden suspender lo
+               <strong>/horario/salas-semanal</strong>, no solo las propias. Los roles sin marcar solo pueden suspender lo
                que ya podían modificar antes (las propias, o el alcance más amplio que ya tengan por otro motivo).
             </p>
          </div>

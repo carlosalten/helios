@@ -198,9 +198,7 @@ async function confirmarEliminar() {
          </UTable>
       </div>
 
-      <div v-if="(roles?.length ?? 0) > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="roles?.length ?? 0" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="roles?.length ?? 0" />
 
       <!-- Modal crear -->
       <UModal v-model:open="modalCrearMostrar" title="Nuevo rol" :ui="{ footer: 'justify-end' }">

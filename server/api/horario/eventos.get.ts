@@ -8,11 +8,11 @@ const LATIDO_MS = 25_000
 
 export default defineEventHandler(async (event) => {
    // El stream sirve a la matriz de clases, a las reservas de sala y a la vista de solo
-   // lectura /horario/salas: alcanza con poder ver cualquiera de esas páginas.
+   // lectura /horario/salas-semestral: alcanza con poder ver cualquiera de esas páginas.
    await requiereAlgunPermiso(event, [
       ['/horario', 'ver'],
-      ['/reservas/horario', 'ver'],
-      ['/horario/salas', 'ver'],
+      ['/horario/salas-semanal', 'ver'],
+      ['/horario/salas-semestral', 'ver'],
    ])
 
    const stream = createEventStream(event)

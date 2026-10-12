@@ -32,7 +32,7 @@ export function publicarEventoHorario(evento: EventoHorario) {
    }
 }
 
-// Atajo para los endpoints de /reservas/horario. Una reserva se ubica por sala y fecha, no
+// Atajo para los endpoints de /horario/salas-semanal. Una reserva se ubica por sala y fecha, no
 // cuelga de un semestre ni de un curso: por eso ambos van en `null` y el aviso le llega a
 // todos los clientes, tengan el semestre que tengan en pantalla.
 export function publicarEventoReserva(

@@ -2,7 +2,7 @@
 // fecha igual o posterior.
 export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [
-      ['/reservas/horario', 'editar'],
+      ['/horario/salas-semanal', 'editar'],
       ['/ayudantias', 'editar'],
    ])
 

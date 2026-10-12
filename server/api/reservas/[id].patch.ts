@@ -2,7 +2,7 @@
 // reserva por drag and drop (mismo payload, solo cambian fecha/inicio/fin).
 export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [
-      ['/reservas/horario', 'editar'],
+      ['/horario/salas-semanal', 'editar'],
       ['/ayudantias', 'editar'],
    ])
 

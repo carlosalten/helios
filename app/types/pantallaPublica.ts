@@ -30,13 +30,13 @@ export interface ClasePantalla {
    // otro caso.
    subtitulo: string | null
    // Si se lee como una clase (asignatura/carrera/profesor) o como una reserva genérica
-   // (título/tipo/responsable) — mismo criterio que `esClase` en /reservas/horario: el tipo es
+   // (título/tipo/responsable) — mismo criterio que `esClase` en /horario/salas-semanal: el tipo es
    // "Clase" o "Ayudantía", tenga o no sesión de paralelo asociada.
    esClase: boolean
    // Presentes solo si `esClase` y la reserva viene de una sesión de paralelo real.
    asignaturaCodigo: string | null
    // Ya resuelto en el backend: nombre corto de la asignatura si tiene uno definido, si no el
-   // completo — mismo criterio que `nombreAsignaturaDe` en /reservas/horario.
+   // completo — mismo criterio que `nombreAsignaturaDe` en /horario/salas-semanal.
    asignaturaNombre: string | null
    paraleloCodigo: string | null
    carreraNombre: string | null

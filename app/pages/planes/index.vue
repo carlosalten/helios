@@ -232,9 +232,7 @@ async function confirmarEliminar() {
          </UTable>
       </div>
 
-      <div v-if="planesFiltrados.length > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="planesFiltrados.length" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="planesFiltrados.length" />
 
       <!-- Modal crear -->
       <UModal v-model:open="modalCrearMostrar" title="Nuevo plan" :ui="{ footer: 'justify-end' }">

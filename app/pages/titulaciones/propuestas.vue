@@ -492,13 +492,11 @@ async function eliminarPropuesta() {
                >
             </div>
 
-            <div v-if="propuestasFiltradas.length > porPagina" class="flex justify-center">
-               <UPagination
-                  v-model:page="paginaActual"
-                  :total="propuestasFiltradas.length"
-                  :items-per-page="porPagina"
-               />
-            </div>
+            <PaginacionTabla
+               v-model:page="paginaActual"
+               v-model:por-pagina="porPagina"
+               :total="propuestasFiltradas.length"
+            />
          </div>
 
          <!-- Detalle -->

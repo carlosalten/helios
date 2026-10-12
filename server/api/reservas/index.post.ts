@@ -1,6 +1,6 @@
 export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [
-      ['/reservas/horario', 'crear'],
+      ['/horario/salas-semanal', 'crear'],
       ['/ayudantias', 'crear'],
    ])
 

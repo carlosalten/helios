@@ -48,7 +48,7 @@ export async function requierePermiso(event: H3Event, ruta: string, accion: stri
 
 // Igual que `requierePermiso`, pero basta con cumplir UNA de las combinaciones (ruta, acción).
 // Se usa donde un mismo recurso alimenta a más de una página: el stream SSE de cambios lo
-// consumen tanto /horario como /reservas/horario, y exigir el permiso de una dejaría a la otra
+// consumen tanto /horario como /horario/salas-semanal, y exigir el permiso de una dejaría a la otra
 // sin avisos en vivo.
 export async function requiereAlgunPermiso(event: H3Event, permisos: readonly (readonly [string, string])[]) {
    const usuario = await usuarioActualizado(event)

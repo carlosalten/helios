@@ -31,7 +31,7 @@ model Rol {
   // aparecen, sin filtrar por rol).
   mostrarEnHorarioProfesores Boolean   @default(true) @map("mostrar_en_horario_profesores")
   // Si las personas de este rol pueden suspender/reactivar CUALQUIER reserva (no solo las
-  // propias) en /reservas/horario — ver server/utils/alcanceReservas.ts (`puedeSuspenderReserva`)
+  // propias) en /horario/salas-semanal — ver server/utils/alcanceReservas.ts (`puedeSuspenderReserva`)
   // y app/pages/configuracion/index.vue, donde se administra. Default false: los roles que no
   // se marquen acá solo pueden suspender lo que ya podían modificar antes (propias, o el
   // alcance más amplio que ya tuvieran por ser Administrador/Jefe de Carrera/encargado de sala).
@@ -95,6 +95,9 @@ model Persona {
   mostrarTopesEspejo Boolean            @default(true) @map("mostrar_topes_espejo")
   colorTopesEspejo   String             @default("#06B6D4") @map("color_topes_espejo") @db.VarChar(7)
   semestrePorDefecto SemestrePorDefecto @default(VIGENTE) @map("semestre_por_defecto")
+  // Tamaño de página por defecto de las tablas (10, 20, 30, 40 o 50 — CHECK
+  // persona_registros_por_pagina_valido). Ver /cuenta/preferencias y usePaginacion.
+  registrosPorPagina Int                @default(20) @map("registros_por_pagina") @db.SmallInt
   // Nulo: sin emoji asignado. Un solo emoji (posiblemente una secuencia ZWJ de varios
   // codepoints — familia, tono de piel, etc.) elegido de
   // https://unicode.org/emoji/charts/full-emoji-list.html. Se muestra flotando sobre el
@@ -536,10 +539,10 @@ model TipoReserva {
   id                Int       @id @default(autoincrement())
   nombre            String    @db.VarChar(30)
   // Hex de una paleta fija de 20 colores con nombre (ver COLORES_RESERVA en
-  // app/types/reserva.ts): cada reserva de este tipo toma este color en /reservas/horario.
+  // app/types/reserva.ts): cada reserva de este tipo toma este color en /horario/salas-semanal.
   color             String    @db.VarChar(7)
   // Valor por defecto de Reserva.publica para una reserva nueva de este tipo: se usa al
-  // prellenar el formulario de nueva reserva en /reservas/horario y al generar las reservas
+  // prellenar el formulario de nueva reserva en /horario/salas-semanal y al generar las reservas
   // de sala de una sesión de clases (ver regenerarReservaSesion en reservasSesion.ts y la
   // carga masiva de horario en cargaMasiva.ts). Cambiar este valor no toca las reservas ya
   // creadas de ese tipo, solo el default para las nuevas.
@@ -576,12 +579,12 @@ model Reserva {
   // aparte: la recurrencia se sabe por si serieId es null o no.
   serieId          String?  @map("serie_id") @db.Uuid
   // Si la reserva se muestra en vistas de cara al público: la vista impresa de
-  // /reservas/horario y la pantalla pública (/pantallas/<codigo>). Por defecto sí — se marca
+  // /horario/salas-semanal y la pantalla pública (/pantallas/<codigo>). Por defecto sí — se marca
   // en false para reservas que deben tomar la sala en la BD pero no anunciarse (p. ej.
   // bloqueos internos de mantenimiento).
   publica          Boolean  @default(true)
   // Reserva suspendida: a diferencia de borrarla, queda visible (destacada en rojo) en
-  // /reservas/horario y en la pantalla pública — sirve para avisar que una clase puntual no se
+  // /horario/salas-semanal y en la pantalla pública — sirve para avisar que una clase puntual no se
   // dicta ese día sin perder el registro de que la sala estaba tomada. No aplica a la serie
   // completa de una reserva recurrente, solo a esta ocurrencia — ver
   // server/api/reservas/[id]/suspender.patch.ts.

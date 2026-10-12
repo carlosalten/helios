@@ -7,7 +7,7 @@ import { DIAS_SEMANA, DIAS_FIN_SEMANA } from '~/types/dia'
 
 // Vista de solo lectura: el horario de cada sala tal como se verá en la PRIMERA semana del
 // semestre seleccionado (no navega semana a semana, ni crea ni modifica reservas — eso se hace
-// en /reservas/horario).
+// en /horario/salas-semanal).
 
 const { user } = useUserSession()
 const toast = useToast()
@@ -47,7 +47,7 @@ const bloquesSemestre = computed(() =>
       .sort((a, b) => a.numero - b.numero)
 )
 
-/* ── Salas: mismo alcance que /reservas/horario ─────────────────────────────
+/* ── Salas: mismo alcance que /horario/salas-semanal ─────────────────────────────
    Administrador ve todas; el resto, solo las que tiene a cargo (EncargadoSala). El backend
    aplica el mismo filtro en /api/reservas. */
 const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? []))
@@ -60,7 +60,7 @@ const salasVisibles = computed(() => {
 })
 const busquedaSala = ref('')
 const filtroTipoSala = ref<number | '__todos__'>('__todos__')
-// Solo los tipos que tienen alguna sala visible, igual que /reservas/horario.
+// Solo los tipos que tienen alguna sala visible, igual que /horario/salas-semanal.
 const opcionesTipoSala = computed(() => {
    const vistos = new Map<number, string>()
    for (const s of salasVisibles.value) {
@@ -163,7 +163,7 @@ interface Tramo {
    entradas: EntradaCelda[]
 }
 
-// Mañana / tarde / vespertino — mismo criterio y colores que /reservas/horario: la mañana
+// Mañana / tarde / vespertino — mismo criterio y colores que /horario/salas-semanal: la mañana
 // termina en el bloque marcado como último de la mañana (Bloque.esUltimoManana) y lo
 // vespertino son los bloques de jornada VESPERTINA. Entre períodos se dibuja una franja de
 // separación (borde superior grueso) en vez de una fila extra, que rompería los rowspan.
@@ -200,7 +200,7 @@ function idxBloqueFin(minutos: number) {
 
 // Cada bloque de una clase es una reserva distinta: se fusionan las consecutivas de la misma
 // actividad, salvo que cambie el profesor o que solo una parte esté suspendida (mismo criterio
-// que /reservas/horario).
+// que /horario/salas-semanal).
 function mismaActividad(a: Reserva, b: Reserva) {
    return (
       a.titulo === b.titulo &&
@@ -303,7 +303,7 @@ function detallesDe(entrada: EntradaCelda) {
    return lineas
 }
 
-// Mismo rojo que /reservas/horario para una reserva suspendida.
+// Mismo rojo que /horario/salas-semanal para una reserva suspendida.
 const COLOR_SUSPENDIDA = '#C8102E'
 function estiloReserva(reserva: Reserva) {
    if (reserva.suspendida) return { borderColor: COLOR_SUSPENDIDA, backgroundColor: `${COLOR_SUSPENDIDA}1a` }
@@ -314,7 +314,7 @@ function estiloReserva(reserva: Reserva) {
 const totalReservas = computed(() => (reservas.value ?? []).length)
 
 /* ── En vivo ─────────────────────────────────────────────────────────────
-   Mismo stream que /reservas/horario. Como la vista es de solo lectura no hay formularios que
+   Mismo stream que /horario/salas-semanal. Como la vista es de solo lectura no hay formularios que
    proteger: se refresca apenas llega el aviso. Las reservas no cuelgan de un semestre
    (`semestreId` nulo); las sesiones y paralelos sí, y solo importan si son del semestre en
    pantalla (asignar sala a una sesión genera su reserva; el color del paralelo es el de la
@@ -344,7 +344,7 @@ const { conectado: enVivo } = useHorarioTiempoReal(async (eventos) => {
       color: 'info',
       icon: 'i-lucide-refresh-cw',
    })
-}, '/horario/salas')
+}, '/horario/salas-semestral')
 </script>
 
 <template>
@@ -352,7 +352,7 @@ const { conectado: enVivo } = useHorarioTiempoReal(async (eventos) => {
       <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
          <p class="text-sm text-usm-text-muted dark:text-slate-400">
             Horario de cada sala tal como se verá en la primera semana del semestre. Solo lectura: las reservas se crean
-            y modifican en Reservas → Horario de salas.
+            y modifican en Horario → Horario de Salas Semanal.
          </p>
          <div class="flex flex-col items-start gap-3 sm:shrink-0 sm:flex-row sm:items-center">
             <UTooltip

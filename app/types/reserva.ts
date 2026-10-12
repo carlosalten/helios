@@ -1,5 +1,5 @@
 // Paleta fija de colores para los tipos de reserva: el usuario elige por nombre, se guarda
-// el hex. Cada reserva en /reservas/horario toma el color de su tipo.
+// el hex. Cada reserva en /horario/salas-semanal toma el color de su tipo.
 export const COLORES_RESERVA = [
    { nombre: 'Rojo', hex: '#EF4444' },
    { nombre: 'Naranjo', hex: '#F97316' },
@@ -73,7 +73,7 @@ export interface Reserva {
    // null en una reserva no recurrente.
    serieId: string | null
    // Si la reserva se muestra en vistas de cara al público: la vista impresa de
-   // /reservas/horario y la pantalla pública (/pantallas/<codigo>).
+   // /horario/salas-semanal y la pantalla pública (/pantallas/<codigo>).
    publica: boolean
    // Suspendida: no se borra (sigue tomando la sala en la BD), pero se destaca en rojo y con la
    // etiqueta "Suspendida" en vez de mostrarse como una reserva normal. Solo afecta esta

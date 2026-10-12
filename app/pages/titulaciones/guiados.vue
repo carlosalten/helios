@@ -152,7 +152,7 @@ function mailtoDe(profesor: TtProfesor) {
       `Estimado/a ${profesor.nombre} ${profesor.apellido}:`,
       '',
       `Junto con saludar, le informo que se le ha asignado como profesor(a) guía de ${alumnos.length} ` +
-      `estudiante${alumnos.length === 1 ? '' : 's'} en el proceso ${procesoLabelActual.value} de Ingeniería en Informática:`,
+         `estudiante${alumnos.length === 1 ? '' : 's'} en el proceso ${procesoLabelActual.value} de Ingeniería en Informática:`,
       '',
       ...alumnos.flatMap((a, i) => [lineaAlumnoCorreo(a, i), ...(i < alumnos.length - 1 ? [''] : [])]),
       '',
@@ -165,15 +165,11 @@ function mailtoDe(profesor: TtProfesor) {
    asignados), el CSV exporta TODAS las propuestas del proceso seleccionado, tengan o no guía
    asignado — una fila por propuesta, no por alumno (un alumno con más de una propuesta
    presentada aparece una vez por cada una). */
-function celdaCsv(valor: string) {
-   return `"${valor.replace(/"/g, '""')}"`
-}
-
 function formatFechaCsv(fecha: string) {
    return new Date(fecha).toLocaleDateString('es-CL', { timeZone: 'UTC' })
 }
 
-function descargarCsv() {
+function descargarCsvProceso() {
    const encabezados = [
       'Nombres',
       'Apellido paterno',
@@ -210,17 +206,7 @@ function descargarCsv() {
       ]
    })
 
-   const contenido = [encabezados, ...filas]
-      .map((fila) => fila.map((v) => celdaCsv(String(v))).join(';'))
-      .join('\r\n')
-   // BOM al inicio: para que Excel detecte UTF-8 y no rompa las tildes/ñ.
-   const blob = new Blob(['﻿' + contenido], { type: 'text/csv;charset=utf-8;' })
-   const url = URL.createObjectURL(blob)
-   const enlace = document.createElement('a')
-   enlace.href = url
-   enlace.download = `propuestas-titulacion-proceso-${procesoLabelActual.value}.csv`
-   enlace.click()
-   URL.revokeObjectURL(url)
+   descargarCsv(`propuestas-titulacion-proceso-${procesoLabelActual.value}.csv`, encabezados, filas)
 }
 
 /* ── Filtros de la lista (profesor, modalidad, grupo, rol) y buscador ────── */
@@ -378,8 +364,13 @@ async function confirmarCambiarGuia() {
             Alumnos con profesor guía ya asignado, agrupados por profesor.
          </p>
          <UTooltip text="Descarga un CSV con todas las propuestas del proceso seleccionado">
-            <UButton icon="i-lucide-download" color="success" variant="outline" :disabled="!propuestasDelProceso.length"
-               @click="descargarCsv">
+            <UButton
+               icon="i-lucide-download"
+               color="success"
+               variant="outline"
+               :disabled="!propuestasDelProceso.length"
+               @click="descargarCsvProceso"
+            >
                Descargar CSV
             </UButton>
          </UTooltip>
@@ -411,12 +402,20 @@ async function confirmarCambiarGuia() {
 
       <div v-else class="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
          <div class="min-w-0 space-y-4">
-            <EmptyState v-if="!profesoresGuiadosFiltrados.length" icon="i-lucide-graduation-cap" :message="hayFiltrosActivos || profesorFiltro !== '__todos__'
-               ? 'Ningún profesor coincide con los filtros aplicados.'
-               : 'No hay profesores guía registrados.'
-               " />
-            <div v-for="pg in profesoresGuiadosFiltrados" :key="pg.profesor.email"
-               class="rounded-2xl border border-default bg-default p-4">
+            <EmptyState
+               v-if="!profesoresGuiadosFiltrados.length"
+               icon="i-lucide-graduation-cap"
+               :message="
+                  hayFiltrosActivos || profesorFiltro !== '__todos__'
+                     ? 'Ningún profesor coincide con los filtros aplicados.'
+                     : 'No hay profesores guía registrados.'
+               "
+            />
+            <div
+               v-for="pg in profesoresGuiadosFiltrados"
+               :key="pg.profesor.email"
+               class="rounded-2xl border border-default bg-default p-4"
+            >
                <div class="mb-3 flex items-start justify-between gap-3">
                   <div class="min-w-0">
                      <p class="truncate font-semibold text-usm-blue dark:text-usm-cyan">
@@ -429,21 +428,34 @@ async function confirmarCambiarGuia() {
                         {{ pg.alumnos.length }}/{{ pg.profesor.cupoMaximo }} alumnos
                      </UBadge>
                      <UTooltip text="Le envía un correo con la lista de sus alumnos asignados">
-                        <UButton size="xs" color="secondary" variant="outline" icon="i-lucide-mail"
-                           :disabled="!alumnosCompletosDe(pg.profesor.email).length" :to="mailtoDe(pg.profesor)">
-
+                        <UButton
+                           size="xs"
+                           color="secondary"
+                           variant="outline"
+                           icon="i-lucide-mail"
+                           :disabled="!alumnosCompletosDe(pg.profesor.email).length"
+                           :to="mailtoDe(pg.profesor)"
+                        >
                         </UButton>
                      </UTooltip>
                   </div>
                </div>
 
-               <EmptyState v-if="!pg.alumnos.length" icon="i-lucide-user-x" :message="hayFiltrosActivos
-                  ? 'Ningún alumno de este profesor coincide con los filtros aplicados.'
-                  : 'Este profesor no tiene alumnos asignados.'
-                  " />
+               <EmptyState
+                  v-if="!pg.alumnos.length"
+                  icon="i-lucide-user-x"
+                  :message="
+                     hayFiltrosActivos
+                        ? 'Ningún alumno de este profesor coincide con los filtros aplicados.'
+                        : 'Este profesor no tiene alumnos asignados.'
+                  "
+               />
                <div v-else class="space-y-2">
-                  <div v-for="alumno in pg.alumnos" :key="alumno.propuestaId"
-                     class="rounded-lg border border-default p-2.5 transition-colors hover:bg-elevated/50">
+                  <div
+                     v-for="alumno in pg.alumnos"
+                     :key="alumno.propuestaId"
+                     class="rounded-lg border border-default p-2.5 transition-colors hover:bg-elevated/50"
+                  >
                      <div class="flex flex-wrap items-start justify-between gap-3">
                         <div class="min-w-0">
                            <p class="truncate text-sm font-medium text-usm-text dark:text-white">
@@ -455,8 +467,14 @@ async function confirmarCambiarGuia() {
                         </div>
                         <div class="flex shrink-0 flex-col items-end gap-1.5">
                            <UBadge color="info" variant="subtle">{{ alumno.modalidad }}</UBadge>
-                           <UButton size="xs" color="neutral" variant="soft" icon="i-lucide-pen"
-                              :disabled="!puedeEditar" @click="abrirCambiarGuia(pg.profesor.email, alumno)">
+                           <UButton
+                              size="xs"
+                              color="neutral"
+                              variant="soft"
+                              icon="i-lucide-pen"
+                              :disabled="!puedeEditar"
+                              @click="abrirCambiarGuia(pg.profesor.email, alumno)"
+                           >
                               Cambiar guía
                            </UButton>
                         </div>
@@ -482,17 +500,23 @@ async function confirmarCambiarGuia() {
                      </span>
                   </div>
                   <div class="h-1.5 w-full overflow-hidden rounded-full bg-elevated">
-                     <div class="h-full bg-usm-blue dark:bg-usm-cyan" :style="{
-                        width: `${resumenCupos.cupoTotal ? Math.min(100, (resumenCupos.asignados / resumenCupos.cupoTotal) * 100) : 0}%`,
-                     }" />
+                     <div
+                        class="h-full bg-usm-blue dark:bg-usm-cyan"
+                        :style="{
+                           width: `${resumenCupos.cupoTotal ? Math.min(100, (resumenCupos.asignados / resumenCupos.cupoTotal) * 100) : 0}%`,
+                        }"
+                     />
                   </div>
                </div>
                <h4 class="mb-2 text-xs font-semibold tracking-wide text-usm-text-muted uppercase dark:text-slate-400">
                   Por modalidad
                </h4>
                <div class="mb-4 space-y-2">
-                  <div v-for="m in resumenCupos.porModalidad" :key="m.modalidad"
-                     class="flex items-center justify-between gap-2 text-sm">
+                  <div
+                     v-for="m in resumenCupos.porModalidad"
+                     :key="m.modalidad"
+                     class="flex items-center justify-between gap-2 text-sm"
+                  >
                      <span class="text-usm-text dark:text-slate-200">{{ m.modalidad }}</span>
                      <span class="font-semibold text-usm-text dark:text-white">{{ m.cantidad }}</span>
                   </div>
@@ -550,17 +574,27 @@ async function confirmarCambiarGuia() {
                   · {{ alumnoCambiarGuia.run }}
                </p>
                <UFormField label="Profesor guía">
-                  <USelectMenu v-model="guiaModalSeleccion" :items="itemsProfesoresGuia" value-key="value"
-                     placeholder="Selecciona un profesor guía…" class="w-full" />
+                  <USelectMenu
+                     v-model="guiaModalSeleccion"
+                     :items="itemsProfesoresGuia"
+                     value-key="value"
+                     placeholder="Selecciona un profesor guía…"
+                     class="w-full"
+                  />
                </UFormField>
             </div>
          </template>
          <template #footer>
-            <UButton variant="ghost" color="neutral" @click="
-               () => {
-                  modalCambiarGuiaMostrar = false
-               }
-            ">Cancelar</UButton>
+            <UButton
+               variant="ghost"
+               color="neutral"
+               @click="
+                  () => {
+                     modalCambiarGuiaMostrar = false
+                  }
+               "
+               >Cancelar</UButton
+            >
             <UButton :loading="asignando === `prop-${alumnoCambiarGuia?.propuestaId}`" @click="confirmarCambiarGuia">
                Guardar
             </UButton>

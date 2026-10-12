@@ -201,7 +201,7 @@ const totalTopes = computed(() => {
 // Los enlaces se ocultan si el rol no puede ver esa sección: el middleware la rebotaría a `/`.
 const { puedeVer: puedeVerHorario } = usePermiso('/horario')
 const { puedeVer: puedeVerCursos } = usePermiso('/cursos')
-const { puedeVer: puedeVerReservas } = usePermiso('/reservas/horario')
+const { puedeVer: puedeVerReservas } = usePermiso('/horario/salas-semanal')
 const { puedeVer: puedeVerFeriados } = usePermiso('/feriados')
 const { puedeVer: puedeVerTopesHorario } = usePermiso('/reportes/topes-horario')
 
@@ -218,7 +218,7 @@ function estiloPunto(color: string | null) {
 
 /* ── Leyenda de "Mis salas hoy" ────────────────────────────────────────────
    Un color por tipo de reserva (TipoReserva.color, el mismo que usan las tarjetas de
-   /reservas/horario) — se junta uno por nombre entre todas las salas a cargo, ordenados de
+   /horario/salas-semanal) — se junta uno por nombre entre todas las salas a cargo, ordenados de
    mayor a menor ocupación total, para no listar tipos que hoy no aparecen en ninguna sala. */
 const leyendaSalasHoy = computed(() => {
    const porTipo = new Map<string, { nombre: string; color: string; ocupados: number }>()
@@ -357,7 +357,7 @@ const leyendaSalasHoy = computed(() => {
                      </div>
                      <UButton
                         v-if="puedeVerReservas"
-                        to="/reservas/horario"
+                        to="/horario/salas-semanal"
                         variant="link"
                         color="neutral"
                         size="xs"
@@ -495,7 +495,7 @@ const leyendaSalasHoy = computed(() => {
                      </div>
                      <UButton
                         v-if="puedeVerReservas"
-                        to="/reservas/horario"
+                        to="/horario/salas-semanal"
                         variant="link"
                         color="neutral"
                         size="xs"
@@ -565,7 +565,7 @@ const leyendaSalasHoy = computed(() => {
                      </div>
                      <UButton
                         v-if="puedeVerReservas"
-                        to="/reservas/horario"
+                        to="/horario/salas-semanal"
                         variant="link"
                         color="neutral"
                         size="xs"
@@ -714,7 +714,7 @@ const leyendaSalasHoy = computed(() => {
                      </div>
                      <UButton
                         v-if="puedeVerReservas"
-                        to="/reservas/horario"
+                        to="/horario/salas-semanal"
                         variant="link"
                         color="neutral"
                         size="xs"
