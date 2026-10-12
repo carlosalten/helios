@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 // (inclusive), todas con el mismo `serieId` para poder editarlas/borrarlas juntas después.
 export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [
-      ['/reservas/horario', 'crear'],
+      ['/horario/salas-semanal', 'crear'],
       ['/ayudantias', 'crear'],
    ])
 

@@ -10,7 +10,7 @@ import { DIAS_SEMANA, DIAS_FIN_SEMANA } from '~/types/dia'
 import { CalendarDate, type DateValue } from '@internationalized/date'
 import type { DateRange } from 'reka-ui'
 
-// Vista de laboratorios modelada sobre app/pages/reservas/horario.vue (misma grilla de 5
+// Vista de laboratorios modelada sobre app/pages/horario/salas-semanal.vue (misma grilla de 5
 // minutos, misma navegación por semana, mismo patrón de edición/borrado "esta reserva" vs
 // "esta y las siguientes"), pero acotada a un único propósito: agendar Ayudantías. A
 // diferencia de esa página, acá no hay tipo/título libres y no hay drag&drop/copiar-pegar. Al
@@ -62,9 +62,18 @@ function puedeModificarReserva(reserva: Reserva) {
    return false
 }
 
+// Suspender/reactivar una ocurrencia: mismo alcance que `puedeSuspenderReserva` en
+// server/utils/alcanceReservas.ts — los roles con `Rol.suspenderCualquierReserva`
+// (/configuracion) pueden con cualquier reserva; el resto, con las mismas que puede modificar.
+function puedeSuspenderReserva(reserva: Reserva) {
+   if (!puedeEditar.value || !user.value) return false
+   if (user.value.rol === 'Administrador' || user.value.puedeSuspenderCualquierReserva) return true
+   return puedeModificarReserva(reserva)
+}
+
 // Esta vista solo administra Ayudantías: una reserva de otro tipo puede aparecer en la
 // grilla (para no ocultar que el laboratorio está ocupado), pero no se abre para editar/borrar
-// desde acá — eso sigue siendo trabajo de /reservas/horario.
+// desde acá — eso sigue siendo trabajo de /horario/salas-semanal.
 function esAyudantia(reserva: Reserva) {
    return reserva.tipoReserva.nombre === 'Ayudantía'
 }
@@ -148,7 +157,7 @@ const diasVisibles = computed(() =>
    mostrarFinSemana.value ? DIAS_SEMANA : DIAS_SEMANA.filter((d) => !DIAS_FIN_SEMANA.includes(d.valor))
 )
 
-/* ── Navegación por semana (idéntico a reservas/horario.vue) ───────────────────────── */
+/* ── Navegación por semana (idéntico a horario/salas-semanal.vue) ───────────────────────── */
 function inicioDeSemana(d: Date) {
    const copia = new Date(d)
    copia.setHours(0, 0, 0, 0)
@@ -211,7 +220,7 @@ const fechasSemana = computed(
    () => new Map(DIAS_SEMANA.map((d) => [d.valor, sumarDias(semanaInicio.value, d.valor - 1)]))
 )
 
-/* ── Franjas de 5 minutos (idéntico a reservas/horario.vue) ─────────────────────────── */
+/* ── Franjas de 5 minutos (idéntico a horario/salas-semanal.vue) ─────────────────────────── */
 type Periodo = 'manana' | 'tarde' | 'vespertino'
 interface Franja {
    indice: number
@@ -279,7 +288,7 @@ const {
    return `/api/reservas?salaCodigo=${salaSeleccionada.value}&desde=${desde}&hasta=${hasta}`
 })
 
-/* ── Grilla (idéntica a reservas/horario.vue: clusters + columnas para solapes) ─────── */
+/* ── Grilla (idéntica a horario/salas-semanal.vue: clusters + columnas para solapes) ─────── */
 interface ReservaPosicionada {
    reserva: Reserva
    columna: number
@@ -465,7 +474,7 @@ function textoBadgeTipo(reserva: Reserva) {
 }
 
 // Nombre de la asignatura cuando la reserva es una clase — mismo criterio que
-// `nombreAsignaturaDe` en reservas/horario.vue (nombre corto si tiene uno definido, si no el
+// `nombreAsignaturaDe` en horario/salas-semanal.vue (nombre corto si tiene uno definido, si no el
 // completo). Para una Ayudantía, el nombre de la asignatura ya viene en `subtitulo`.
 function nombreAsignaturaDe(reserva: Reserva) {
    const asignatura = reserva.sesionParalelo ? asignaturaVisible(reserva.sesionParalelo.paralelo) : null
@@ -720,6 +729,87 @@ async function borrarReserva(alcance: 'solo' | 'serie' = 'solo') {
    }
 }
 
+/* ── Suspender / reactivar ayudantía ────────────────────────────────────────────────
+   No elimina la fila: solo alterna `suspendida` de esta ocurrencia puntual (no toca el resto
+   de la serie). Reactivar no pide confirmación (deshace el estado); suspender sí, porque la
+   ayudantía pasa a mostrarse destacada en rojo en la grilla, el reporte impreso y la pantalla
+   pública. Mismo endpoint que /horario/salas-semanal. */
+const suspendiendo = ref(false)
+const confirmSuspenderMostrar = ref(false)
+
+function abrirSuspender(reserva: Reserva) {
+   reservaSeleccionada.value = reserva
+   if (reserva.suspendida) {
+      void alternarSuspendida(reserva)
+      return
+   }
+   confirmSuspenderMostrar.value = true
+}
+
+async function confirmarSuspender() {
+   if (!reservaSeleccionada.value) return
+   await alternarSuspendida(reservaSeleccionada.value)
+}
+
+async function alternarSuspendida(reserva: Reserva) {
+   suspendiendo.value = true
+   try {
+      await $fetch(`/api/reservas/${reserva.id}/suspender`, { method: 'PATCH' })
+      confirmSuspenderMostrar.value = false
+      modalDetalleMostrar.value = false
+      await refrescarReservas()
+      toast.add({
+         title: reserva.suspendida ? 'Ayudantía reactivada' : 'Ayudantía suspendida',
+         color: 'success',
+         icon: 'i-lucide-check-circle',
+      })
+   } catch (e: unknown) {
+      const mensaje = (e as { data?: { message?: string } }).data?.message ?? 'Error al actualizar la ayudantía'
+      toast.add({ title: mensaje, color: 'error', icon: 'i-lucide-alert-circle' })
+   } finally {
+      suspendiendo.value = false
+   }
+}
+
+/* ── Menú de click derecho sobre una ayudantía ───────────────────────────────────────
+   Un solo UContextMenu envuelve toda la matriz (con el <table> como único trigger), igual que
+   /horario/salas-semanal; `reservaContexto` guarda sobre qué ayudantía se hizo click derecho.
+   El handler va en el <td> — sin `.stop` en el bloque de la reserva — porque el evento nativo
+   `contextmenu` tiene que seguir subiendo hasta el <table> para que reka-ui lo intercepte; por
+   eso se detecta la reserva con `event.target` y el atributo `data-reserva-id`. Solo ofrece
+   acciones sobre Ayudantías: el resto de reservas se ve en la grilla pero no se administra acá. */
+const reservaContexto = ref<Reserva | null>(null)
+
+function onContextMenuCelda(event: MouseEvent) {
+   const idReserva = (event.target as HTMLElement).closest('[data-reserva-id]')?.getAttribute('data-reserva-id')
+   const reserva = idReserva ? (reservas.value ?? []).find((r) => r.id === Number(idReserva)) : undefined
+   reservaContexto.value = reserva && esAyudantia(reserva) ? reserva : null
+}
+
+const itemsMenuContextual = computed(() => {
+   const reserva = reservaContexto.value
+   if (!reserva) return []
+   const items = []
+   if (puedeModificarReserva(reserva)) {
+      items.push({ label: 'Editar ayudantía', icon: 'i-lucide-pen', onSelect: () => abrirEditar(reserva) })
+   }
+   if (puedeSuspenderReserva(reserva)) {
+      items.push({
+         label: reserva.suspendida ? 'Reactivar ayudantía' : 'Suspender ayudantía',
+         icon: reserva.suspendida ? 'i-lucide-rotate-ccw' : 'i-lucide-ban',
+         onSelect: () => abrirSuspender(reserva),
+      })
+   }
+   if (puedeModificarReserva(reserva)) {
+      items.push({
+         label: 'Borrar ayudantía',
+         icon: 'i-lucide-trash-2',
+         onSelect: () => abrirConfirmBorrar(reserva),
+      })
+   }
+   return items.length ? [items] : []
+})
+
 /* ── Editar ayudantía ─────────────────────────────────────────────────────────────────
    Reserva no guarda a qué carrera/asignatura/paralelo corresponde (solo quedan como texto
    en título/subtítulo) — no hay forma confiable de reconstruir esos tres selects al editar.
@@ -948,119 +1038,123 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                message="Este semestre no tiene bloques horarios definidos. Crea bloques para armar la plantilla de horas."
             />
             <div v-else class="overflow-x-auto rounded-2xl border border-default bg-default">
-               <table class="w-full border-separate border-spacing-0 text-sm">
-                  <thead>
-                     <tr>
-                        <th
-                           class="sticky left-0 z-2 w-16 border-b border-default border-e-2 border-e-usm-text-muted/30 bg-muted p-1 text-left text-xs font-semibold text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
-                        >
-                           Hora
-                        </th>
-                        <th
-                           v-for="dia in diasVisibles"
-                           :key="dia.valor"
-                           class="border-b border-default border-e-2 border-e-usm-text-muted/30 p-2 text-center text-xs font-semibold last:border-e-0 dark:border-e-slate-500/50"
-                           :class="
-                              DIAS_FIN_SEMANA.includes(dia.valor)
-                                 ? 'bg-gray-100 text-usm-text-muted dark:bg-slate-800 dark:text-slate-400'
-                                 : 'bg-muted text-usm-text dark:text-white'
-                           "
-                        >
-                           <div>{{ dia.nombre }}</div>
-                           <div class="font-normal text-usm-text-muted dark:text-slate-400">
-                              {{ formatFechaCorta(fechasSemana.get(dia.valor)!) }}
-                           </div>
-                        </th>
-                     </tr>
-                  </thead>
-                  <tbody>
-                     <template v-for="franja in franjas" :key="franja.indice">
+               <UContextMenu :items="itemsMenuContextual">
+                  <table class="w-full border-separate border-spacing-0 text-sm">
+                     <thead>
                         <tr>
                            <th
-                              class="sticky left-0 z-1 h-2.5 border-e-2 border-e-usm-text-muted/30 bg-muted p-0 text-right align-top text-[10px] font-normal text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
+                              class="sticky left-0 z-2 w-16 border-b border-default border-e-2 border-e-usm-text-muted/30 bg-muted p-1 text-left text-xs font-semibold text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
+                           >
+                              Hora
+                           </th>
+                           <th
+                              v-for="dia in diasVisibles"
+                              :key="dia.valor"
+                              class="border-b border-default border-e-2 border-e-usm-text-muted/30 p-2 text-center text-xs font-semibold last:border-e-0 dark:border-e-slate-500/50"
                               :class="
-                                 esLimiteMediaHora(franja.horaFin)
-                                    ? 'border-b border-b-usm-text-muted/25 dark:border-b-slate-500/40'
-                                    : ''
+                                 DIAS_FIN_SEMANA.includes(dia.valor)
+                                    ? 'bg-gray-100 text-usm-text-muted dark:bg-slate-800 dark:text-slate-400'
+                                    : 'bg-muted text-usm-text dark:text-white'
                               "
                            >
-                              <span v-if="muestraEtiqueta(franja)" class="block -translate-y-1.5 pe-1">{{
-                                 franja.horaInicio
-                              }}</span>
+                              <div>{{ dia.nombre }}</div>
+                              <div class="font-normal text-usm-text-muted dark:text-slate-400">
+                                 {{ formatFechaCorta(fechasSemana.get(dia.valor)!) }}
+                              </div>
                            </th>
-                           <template v-for="dia in diasVisibles" :key="dia.valor">
-                              <td
-                                 v-if="celdaDe(dia.valor, franja.indice).tipo !== 'oculta'"
-                                 :rowspan="rowspanDe(dia.valor, franja.indice)"
-                                 class="h-2.5 border-e-2 border-e-usm-text-muted/30 p-0 align-top transition-colors last:border-e-0 dark:border-e-slate-500/50"
-                                 :class="[
-                                    claseCeldaDia(dia.valor, franja),
-                                    terminaEnMediaHora(dia.valor, franja.indice)
+                        </tr>
+                     </thead>
+                     <tbody>
+                        <template v-for="franja in franjas" :key="franja.indice">
+                           <tr>
+                              <th
+                                 class="sticky left-0 z-1 h-2.5 border-e-2 border-e-usm-text-muted/30 bg-muted p-0 text-right align-top text-[10px] font-normal text-usm-text-muted dark:border-e-slate-500/50 dark:text-slate-400"
+                                 :class="
+                                    esLimiteMediaHora(franja.horaFin)
                                        ? 'border-b border-b-usm-text-muted/25 dark:border-b-slate-500/40'
-                                       : '',
-                                    celdaDe(dia.valor, franja.indice).tipo === 'vacia' && puedeCrear
-                                       ? 'cursor-pointer hover:bg-usm-blue/10'
-                                       : '',
-                                 ]"
-                                 @click="abrirCrear(dia.valor, franja)"
+                                       : ''
+                                 "
                               >
-                                 <div class="relative h-full">
-                                    <div
-                                       v-for="rp in reservasEnCelda(dia.valor, franja.indice)"
-                                       :key="rp.reserva.id"
-                                       class="absolute box-border overflow-hidden rounded-md border p-1 text-[11px] leading-tight text-usm-text dark:text-slate-100"
-                                       :class="esAyudantia(rp.reserva) ? 'cursor-pointer' : ''"
-                                       :style="[estiloPosicion(rp), estiloReserva(rp.reserva)]"
-                                       @click.stop="abrirDetalle(rp.reserva)"
-                                    >
-                                       <div class="flex items-start justify-between gap-1">
-                                          <span
-                                             class="inline-block min-w-0 truncate rounded-full px-1.5 py-0.5 text-[9.5px] leading-none font-medium"
-                                             :style="estiloBadgeTipo(rp.reserva)"
-                                          >
-                                             {{ textoBadgeTipo(rp.reserva) }}
-                                          </span>
-                                          <span
-                                             class="shrink-0 text-[9.5px] leading-none font-semibold whitespace-nowrap"
-                                          >
-                                             {{ horaDeISO(rp.reserva.inicio) }}–{{ horaDeISO(rp.reserva.fin) }}
-                                          </span>
-                                       </div>
-                                       <span
-                                          class="inline-flex min-w-0 items-center gap-1 truncate text-xs font-bold"
-                                          :class="rp.reserva.suspendida ? 'line-through opacity-70' : ''"
+                                 <span v-if="muestraEtiqueta(franja)" class="block -translate-y-1.5 pe-1">{{
+                                    franja.horaInicio
+                                 }}</span>
+                              </th>
+                              <template v-for="dia in diasVisibles" :key="dia.valor">
+                                 <td
+                                    v-if="celdaDe(dia.valor, franja.indice).tipo !== 'oculta'"
+                                    :rowspan="rowspanDe(dia.valor, franja.indice)"
+                                    class="h-2.5 border-e-2 border-e-usm-text-muted/30 p-0 align-top transition-colors last:border-e-0 dark:border-e-slate-500/50"
+                                    :class="[
+                                       claseCeldaDia(dia.valor, franja),
+                                       terminaEnMediaHora(dia.valor, franja.indice)
+                                          ? 'border-b border-b-usm-text-muted/25 dark:border-b-slate-500/40'
+                                          : '',
+                                       celdaDe(dia.valor, franja.indice).tipo === 'vacia' && puedeCrear
+                                          ? 'cursor-pointer hover:bg-usm-blue/10'
+                                          : '',
+                                    ]"
+                                    @click="abrirCrear(dia.valor, franja)"
+                                    @contextmenu="onContextMenuCelda"
+                                 >
+                                    <div class="relative h-full">
+                                       <div
+                                          v-for="rp in reservasEnCelda(dia.valor, franja.indice)"
+                                          :key="rp.reserva.id"
+                                          :data-reserva-id="rp.reserva.id"
+                                          class="absolute box-border overflow-hidden rounded-md border p-1 text-[11px] leading-tight text-usm-text dark:text-slate-100"
+                                          :class="esAyudantia(rp.reserva) ? 'cursor-pointer' : ''"
+                                          :style="[estiloPosicion(rp), estiloReserva(rp.reserva)]"
+                                          @click.stop="abrirDetalle(rp.reserva)"
                                        >
-                                          <UIcon
-                                             v-if="rp.reserva.serieId"
-                                             name="i-lucide-repeat"
-                                             class="size-3 shrink-0"
-                                             title="Ayudantía recurrente"
-                                          />
-                                          <span class="truncate">{{ rp.reserva.titulo }}</span>
-                                       </span>
-                                       <template v-if="rp.reserva.sesionParalelo">
-                                          <div class="truncate">{{ nombreAsignaturaDe(rp.reserva) }}</div>
-                                          <div class="truncate">{{ carreraDe(rp.reserva) }}</div>
-                                       </template>
-                                       <template v-else>
-                                          <div v-if="rp.reserva.subtitulo" class="truncate">
-                                             {{ rp.reserva.subtitulo }}
+                                          <div class="flex items-start justify-between gap-1">
+                                             <span
+                                                class="inline-block min-w-0 truncate rounded-full px-1.5 py-0.5 text-[9.5px] leading-none font-medium"
+                                                :style="estiloBadgeTipo(rp.reserva)"
+                                             >
+                                                {{ textoBadgeTipo(rp.reserva) }}
+                                             </span>
+                                             <span
+                                                class="shrink-0 text-[9.5px] leading-none font-semibold whitespace-nowrap"
+                                             >
+                                                {{ horaDeISO(rp.reserva.inicio) }}–{{ horaDeISO(rp.reserva.fin) }}
+                                             </span>
                                           </div>
-                                          <div v-if="carreraDe(rp.reserva)" class="truncate">
-                                             {{ carreraDe(rp.reserva) }}
+                                          <span
+                                             class="inline-flex min-w-0 items-center gap-1 truncate text-xs font-bold"
+                                             :class="rp.reserva.suspendida ? 'line-through opacity-70' : ''"
+                                          >
+                                             <UIcon
+                                                v-if="rp.reserva.serieId"
+                                                name="i-lucide-repeat"
+                                                class="size-3 shrink-0"
+                                                title="Ayudantía recurrente"
+                                             />
+                                             <span class="truncate">{{ rp.reserva.titulo }}</span>
+                                          </span>
+                                          <template v-if="rp.reserva.sesionParalelo">
+                                             <div class="truncate">{{ nombreAsignaturaDe(rp.reserva) }}</div>
+                                             <div class="truncate">{{ carreraDe(rp.reserva) }}</div>
+                                          </template>
+                                          <template v-else>
+                                             <div v-if="rp.reserva.subtitulo" class="truncate">
+                                                {{ rp.reserva.subtitulo }}
+                                             </div>
+                                             <div v-if="carreraDe(rp.reserva)" class="truncate">
+                                                {{ carreraDe(rp.reserva) }}
+                                             </div>
+                                          </template>
+                                          <div v-if="rp.reserva.persona" class="truncate">
+                                             {{ rp.reserva.persona.nombre }} {{ rp.reserva.persona.apellido }}
                                           </div>
-                                       </template>
-                                       <div v-if="rp.reserva.persona" class="truncate">
-                                          {{ rp.reserva.persona.nombre }} {{ rp.reserva.persona.apellido }}
                                        </div>
                                     </div>
-                                 </div>
-                              </td>
-                           </template>
-                        </tr>
-                     </template>
-                  </tbody>
-               </table>
+                                 </td>
+                              </template>
+                           </tr>
+                        </template>
+                     </tbody>
+                  </table>
+               </UContextMenu>
             </div>
          </div>
       </div>
@@ -1310,6 +1404,16 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
                Editar
             </UButton>
             <UButton
+               v-if="reservaSeleccionada && puedeSuspenderReserva(reservaSeleccionada)"
+               color="warning"
+               variant="subtle"
+               :icon="reservaSeleccionada.suspendida ? 'i-lucide-rotate-ccw' : 'i-lucide-ban'"
+               :loading="suspendiendo"
+               @click="abrirSuspender(reservaSeleccionada!)"
+            >
+               {{ reservaSeleccionada.suspendida ? 'Reactivar' : 'Suspender' }}
+            </UButton>
+            <UButton
                v-if="reservaSeleccionada && puedeModificarReserva(reservaSeleccionada)"
                color="error"
                icon="i-lucide-calendar-x"
@@ -1319,6 +1423,29 @@ async function ejecutarGuardarEditar(alcance: 'solo' | 'serie') {
             </UButton>
          </template>
       </UModal>
+
+      <!-- Confirmar suspensión -->
+      <ConfirmModal
+         v-model:open="confirmSuspenderMostrar"
+         title="Suspender ayudantía"
+         confirm-label="Suspender"
+         confirm-icon="i-lucide-ban"
+         confirm-color="warning"
+         :loading="suspendiendo"
+         @confirm="confirmarSuspender"
+      >
+         <p class="text-sm text-usm-text dark:text-slate-200">
+            ¿Suspender la ayudantía
+            <span class="font-semibold">{{ reservaSeleccionada?.titulo }}</span>
+            del
+            {{
+               reservaSeleccionada
+                  ? formatFechaDisplay(new Date(`${reservaSeleccionada.fecha.slice(0, 10)}T00:00:00`))
+                  : ''
+            }}? Queda destacada en rojo en la grilla, el reporte impreso y la pantalla pública, pero no se borra. Solo
+            afecta esta fecha, no el resto de la serie.
+         </p>
+      </ConfirmModal>
 
       <!-- Confirmar borrado -->
       <ConfirmModal

@@ -260,13 +260,11 @@ function seleccionarProfesor(row: { original: ProfesorBloques }) {
                               </template>
                            </UTable>
                         </div>
-                        <div v-if="profesoresCompleta.length > porPaginaCompleta" class="flex justify-center">
-                           <UPagination
-                              v-model:page="paginaCompleta"
-                              :total="profesoresCompleta.length"
-                              :items-per-page="porPaginaCompleta"
-                           />
-                        </div>
+                        <PaginacionTabla
+                           v-model:page="paginaCompleta"
+                           v-model:por-pagina="porPaginaCompleta"
+                           :total="profesoresCompleta.length"
+                        />
                      </template>
                   </div>
 
@@ -314,13 +312,11 @@ function seleccionarProfesor(row: { original: ProfesorBloques }) {
                               </template>
                            </UTable>
                         </div>
-                        <div v-if="profesoresParcial.length > porPaginaParcial" class="flex justify-center">
-                           <UPagination
-                              v-model:page="paginaParcial"
-                              :total="profesoresParcial.length"
-                              :items-per-page="porPaginaParcial"
-                           />
-                        </div>
+                        <PaginacionTabla
+                           v-model:page="paginaParcial"
+                           v-model:por-pagina="porPaginaParcial"
+                           :total="profesoresParcial.length"
+                        />
                      </template>
                   </div>
                </div>

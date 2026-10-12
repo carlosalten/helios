@@ -1,6 +1,6 @@
 // Resumen de reservas para /reservas/resumen: acotado a las salas asignadas (EncargadoSala)
 // para cualquier rol que no sea Administrador, que ve las de todas las salas. A diferencia de
-// /reservas/horario e /imprimir (donde solo 'Apoyo Docente' queda acotado — ver
+// /horario/salas-semanal e /imprimir (donde solo 'Apoyo Docente' queda acotado — ver
 // server/utils/alcanceReservas.ts), acá la restricción aplica a todos los roles no-Administrador:
 // es información agregada de "mis salas", no una vista operativa donde otros roles necesitan
 // ver todo para agendar. Dentro de la ventana que cubre hoy, la semana y el mes actuales. El

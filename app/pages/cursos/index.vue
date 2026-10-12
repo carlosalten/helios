@@ -545,9 +545,11 @@ async function confirmarEliminar() {
                </UTable>
             </div>
 
-            <div v-if="cursosFiltrados.length > porPagina" class="flex justify-center">
-               <UPagination v-model:page="paginaActual" :total="cursosFiltrados.length" :items-per-page="porPagina" />
-            </div>
+            <PaginacionTabla
+               v-model:page="paginaActual"
+               v-model:por-pagina="porPagina"
+               :total="cursosFiltrados.length"
+            />
          </div>
 
          <!-- Panel de detalle del curso seleccionado -->

@@ -309,9 +309,7 @@ async function confirmarEliminar() {
          </UTable>
       </div>
 
-      <div v-if="feriadosFiltrados.length > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="feriadosFiltrados.length" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="feriadosFiltrados.length" />
 
       <!-- Modal crear -->
       <UModal v-model:open="modalCrearMostrar" title="Nuevo feriado" :ui="{ footer: 'justify-end' }">

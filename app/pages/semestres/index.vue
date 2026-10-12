@@ -359,9 +359,7 @@ async function confirmarEliminar() {
          </UTable>
       </div>
 
-      <div v-if="semestresFiltrados.length > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="semestresFiltrados.length" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="semestresFiltrados.length" />
 
       <!-- Modal crear -->
       <UModal v-model:open="modalCrearMostrar" title="Nuevo semestre" :ui="{ footer: 'justify-end' }">

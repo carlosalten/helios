@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { COLORES_RESERVA } from '~/types/reserva'
-import { TEMAS_PREFERIDOS, type TemaPreferido } from '~/types/preferencias'
+import {
+   OPCIONES_REGISTROS_POR_PAGINA,
+   REGISTROS_POR_PAGINA_DEFECTO,
+   TEMAS_PREFERIDOS,
+   type TemaPreferido,
+} from '~/types/preferencias'
 
-const { user } = useUserSession()
+const { user, fetch: refrescarSesion } = useUserSession()
 const colorMode = useColorMode()
 const toast = useToast()
 
@@ -56,6 +61,36 @@ async function guardarTopes() {
       guardandoTopes.value = false
    }
 }
+
+/* ── Registros por página ───────────────────────────────────
+   Tamaño de página con que parte cada tabla (ver usePaginacion); cada tabla lo puede cambiar
+   localmente con su propio selector. El PATCH lo actualiza en la sesión, y `refrescarSesion`
+   trae esa sesión al cliente para que las tablas lo usen sin volver a iniciar sesión. */
+const formPaginacion = reactive({
+   registrosPorPagina: user.value?.registrosPorPagina ?? REGISTROS_POR_PAGINA_DEFECTO,
+})
+const guardandoPaginacion = ref(false)
+const errorPaginacion = ref<string | null>(null)
+
+const opcionesRegistros = OPCIONES_REGISTROS_POR_PAGINA.map((n): { label: string; value: number } => ({
+   label: `${n} registros`,
+   value: n,
+}))
+
+async function guardarPaginacion() {
+   guardandoPaginacion.value = true
+   errorPaginacion.value = null
+   try {
+      await $fetch('/api/preferencias', { method: 'PATCH', body: { ...formPaginacion } })
+      await refrescarSesion()
+      toast.add({ title: 'Preferencias guardadas', color: 'success', icon: 'i-lucide-check-circle' })
+   } catch (e: unknown) {
+      errorPaginacion.value =
+         (e as { data?: { message?: string } }).data?.message ?? 'No se pudieron guardar las preferencias'
+   } finally {
+      guardandoPaginacion.value = false
+   }
+}
 </script>
 
 <template>
@@ -82,6 +117,36 @@ async function guardarTopes() {
 
             <div class="flex justify-end">
                <UButton type="submit" form="form-tema" :loading="guardandoTema">Guardar</UButton>
+            </div>
+         </UForm>
+      </div>
+
+      <div class="max-w-lg rounded-2xl border border-default bg-default p-4 sm:p-6">
+         <h3 class="mb-1 text-sm font-semibold text-usm-text dark:text-white">Registros por página</h3>
+         <p class="mb-4 text-xs text-usm-text-muted dark:text-slate-400">
+            Cantidad de registros que muestran las tablas al abrirse. En cada tabla puedes cambiarla temporalmente con
+            su propio selector.
+         </p>
+         <UForm id="form-paginacion" :state="formPaginacion" class="space-y-4" @submit="guardarPaginacion">
+            <UFormField label="Registros por página" name="registrosPorPagina">
+               <USelect
+                  v-model="formPaginacion.registrosPorPagina"
+                  :items="opcionesRegistros"
+                  value-key="value"
+                  class="w-full"
+               />
+            </UFormField>
+
+            <UAlert
+               v-if="errorPaginacion"
+               icon="i-lucide-alert-circle"
+               color="error"
+               variant="subtle"
+               :description="errorPaginacion"
+            />
+
+            <div class="flex justify-end">
+               <UButton type="submit" form="form-paginacion" :loading="guardandoPaginacion">Guardar</UButton>
             </div>
          </UForm>
       </div>

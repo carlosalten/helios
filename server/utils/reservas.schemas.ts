@@ -52,7 +52,7 @@ export const crearReservaSchema = z
       tipoReservaId: z.number({ error: 'El tipo de reserva es requerido' }).int(),
       // Nulo: reserva sin responsable designado (ver Reserva.personaId en schema.prisma).
       personaId: z.number().int().nullable(),
-      // Si se muestra en vistas de cara al público (impresa de /reservas/horario y pantalla
+      // Si se muestra en vistas de cara al público (impresa de /horario/salas-semanal y pantalla
       // pública). Con default: los payloads viejos (sesiones de clases, integraciones) que no
       // mandan el campo siguen mostrándose.
       publica: z.boolean().default(true),
@@ -135,3 +135,12 @@ export const crearReservaRecurrenteSchema = z
    )
 
 export type CrearReservaRecurrenteInput = z.infer<typeof crearReservaRecurrenteSchema>
+
+// Body opcional de PATCH /api/reservas/:id/suspender: ids de los demás bloques de una tarjeta
+// fusionada (ver el comentario en ese endpoint). Tope de 20: una clase no tiene tantos bloques.
+export const suspenderReservaSchema = z.object({
+   ids: z
+      .array(z.number({ error: 'Id inválido' }).int({ error: 'Id inválido' }).positive({ error: 'Id inválido' }))
+      .max(20, 'Demasiadas reservas')
+      .optional(),
+})

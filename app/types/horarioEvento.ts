@@ -4,10 +4,10 @@
 export interface EventoHorario {
    // Qué cambió: una sesión de clases, un paralelo (código, color, cupo), los recursos de
    // los paneles laterales (salas y profesores, que se arrastran sobre la matriz) o una
-   // reserva de sala de /reservas/horario.
+   // reserva de sala de /horario/salas-semanal.
    //
    // Ojo con 'sesion': asignarle sala a una sesión genera además su reserva recurrente (ver
-   // server/utils/reservasSesion.ts), así que /reservas/horario también tiene que reaccionar
+   // server/utils/reservasSesion.ts), así que /horario/salas-semanal también tiene que reaccionar
    // a ese tipo, no solo a 'reserva'. A la inversa, una reserva suelta no altera la matriz de
    // clases y /horario ignora los eventos 'reserva'.
    tipo: 'sesion' | 'paralelo' | 'sala' | 'profesor' | 'reserva'

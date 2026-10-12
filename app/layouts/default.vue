@@ -126,7 +126,8 @@ const gruposNav: NavItem[][] = [
          children: [
             { to: '/horario', label: 'Horarios de carreras' },
             { to: '/horario/profesor', label: 'Horario de profesor' },
-            { to: '/horario/salas', label: 'Horario de salas' },
+            { to: '/horario/salas-semanal', label: 'Horario de salas semanal' },
+            { to: '/horario/salas-semestral', label: 'Horario de salas semestral' },
          ],
       },
       {
@@ -143,7 +144,6 @@ const gruposNav: NavItem[][] = [
          icon: 'i-lucide-calendar',
          label: 'Reservas',
          children: [
-            { to: '/reservas/horario', label: 'Horario de salas' },
             { to: '/reservas/imprimir', label: 'Imprimir horarios' },
             { to: '/reservas/resumen', label: 'Resumen de reservas' },
             { to: '/reservas/tipos', label: 'Tipos de reserva' },
@@ -234,7 +234,8 @@ const pageTitles: Record<string, string> = {
    '/horario': 'Horario',
    '/horario/profesor': 'Horario de profesor',
    '/horario/profesores': 'Bloques por profesor',
-   '/horario/salas': 'Horario de salas del semestre',
+   '/horario/salas-semanal': 'Horario de salas semanal',
+   '/horario/salas-semestral': 'Horario de salas semestral',
    '/semestres': 'Semestres',
    '/semestres/resumen': 'Semestre vigente y borrador',
    '/bloques': 'Bloques horarios',
@@ -249,8 +250,7 @@ const pageTitles: Record<string, string> = {
    '/salas/pantallas': 'Pantallas Público',
    '/personas/tipos': 'Tipos de persona',
    '/personas/gestion': 'Gestión de personas',
-   '/reservas/horario': 'Horario de salas',
-   '/reservas/imprimir': 'Imprimir horarios',
+   '/reservas/imprimir': 'Imprimir horarios de salas',
    '/reservas/resumen': 'Resumen de reservas',
    '/reservas/tipos': 'Tipos de reserva',
    '/ayudantias': 'Ayudantías',
@@ -408,13 +408,28 @@ const navItemsPreferencias = computed<NavigationMenuItem[][]>(() => [
             class="flex shrink-0 items-center border-b border-gray-200 dark:border-slate-800"
             :class="collapsed ? 'flex-col gap-1 px-2 py-2' : 'h-16 gap-3 px-4'"
          >
-            <div class="flex shrink-0 items-center justify-center rounded-lg" :class="collapsed ? 'size-8' : 'size-12'">
-               <NuxtImg src="/images/isotipo-usm.png" format="webp" quality="80" alt="UTFSM" />
-            </div>
-            <div v-if="!collapsed" class="min-w-0 leading-tight">
-               <p class="truncate text-sm font-bold text-usm-text dark:text-white">HELIOS</p>
-               <p class="truncate text-xs text-usm-gray dark:text-slate-400">Gestión Académica</p>
-            </div>
+            <NuxtLink
+               to="/"
+               class="flex min-w-0 items-center"
+               :class="collapsed ? 'flex-col gap-1' : 'gap-3'"
+               aria-label="Ir a Inicio"
+               @click="
+                  () => {
+                     sidebarOpen = false
+                  }
+               "
+            >
+               <div
+                  class="flex shrink-0 items-center justify-center rounded-lg"
+                  :class="collapsed ? 'size-8' : 'size-12'"
+               >
+                  <NuxtImg src="/images/isotipo-usm.png" format="webp" quality="80" alt="UTFSM" />
+               </div>
+               <div v-if="!collapsed" class="min-w-0 leading-tight">
+                  <p class="truncate text-sm font-bold text-usm-text dark:text-white">HELIOS</p>
+                  <p class="truncate text-xs text-usm-gray dark:text-slate-400">Gestión Académica</p>
+               </div>
+            </NuxtLink>
             <UButton
                icon="i-lucide-x"
                variant="ghost"

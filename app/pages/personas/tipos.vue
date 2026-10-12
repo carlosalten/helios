@@ -162,9 +162,7 @@ async function confirmarEliminar() {
          </UTable>
       </div>
 
-      <div v-if="(tipos?.length ?? 0) > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="tipos?.length ?? 0" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="tipos?.length ?? 0" />
 
       <!-- Modal crear -->
       <UModal v-model:open="modalCrearMostrar" title="Nuevo tipo de persona" :ui="{ footer: 'justify-end' }">

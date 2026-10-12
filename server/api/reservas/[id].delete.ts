@@ -2,7 +2,7 @@
 // `reserva_sin_solapamiento` deja de considerar esa reserva de inmediato.
 export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [
-      ['/reservas/horario', 'editar'],
+      ['/horario/salas-semanal', 'editar'],
       ['/ayudantias', 'editar'],
    ])
 

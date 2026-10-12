@@ -116,27 +116,44 @@ async function confirmarEliminar() {
       <TableSkeleton v-if="status === 'pending'" :rows="5" />
 
       <div v-else class="overflow-hidden rounded-2xl border border-default bg-default">
-         <EmptyState v-if="!tipos?.length" icon="i-lucide-door-open" message="No hay tipos de sala registrados"
-            :action="puedeCrear ? 'Nuevo tipo' : undefined" @action="abrirCrear" />
+         <EmptyState
+            v-if="!tipos?.length"
+            icon="i-lucide-door-open"
+            message="No hay tipos de sala registrados"
+            :action="puedeCrear ? 'Nuevo tipo' : undefined"
+            @action="abrirCrear"
+         />
          <UTable v-else :data="tiposPagina" :columns="columnas">
             <template #acciones-cell="{ row }">
                <div class="flex justify-end gap-1">
                   <UTooltip text="Editar">
-                     <UButton icon="i-lucide-pen" color="neutral" variant="ghost" size="xs" :disabled="!puedeEditar"
-                        aria-label="Editar" @click="abrirEditar(row.original)" />
+                     <UButton
+                        icon="i-lucide-pen"
+                        color="neutral"
+                        variant="ghost"
+                        size="xs"
+                        :disabled="!puedeEditar"
+                        aria-label="Editar"
+                        @click="abrirEditar(row.original)"
+                     />
                   </UTooltip>
                   <UTooltip text="Eliminar">
-                     <UButton icon="i-lucide-trash-2" color="error" variant="ghost" size="xs" :disabled="!puedeBorrar"
-                        aria-label="Eliminar" @click="abrirConfirmEliminar(row.original)" />
+                     <UButton
+                        icon="i-lucide-trash-2"
+                        color="error"
+                        variant="ghost"
+                        size="xs"
+                        :disabled="!puedeBorrar"
+                        aria-label="Eliminar"
+                        @click="abrirConfirmEliminar(row.original)"
+                     />
                   </UTooltip>
                </div>
             </template>
          </UTable>
       </div>
 
-      <div v-if="(tipos?.length ?? 0) > porPagina" class="flex justify-center">
-         <UPagination v-model:page="paginaActual" :total="tipos?.length ?? 0" :items-per-page="porPagina" />
-      </div>
+      <PaginacionTabla v-model:page="paginaActual" v-model:por-pagina="porPagina" :total="tipos?.length ?? 0" />
 
       <!-- Modal crear -->
       <UModal v-model:open="modalCrearMostrar" title="Nuevo tipo de sala" :ui="{ footer: 'justify-end' }">
@@ -148,7 +165,16 @@ async function confirmarEliminar() {
             </UForm>
          </template>
          <template #footer>
-            <UButton variant="ghost" color="neutral" @click="() => { modalCrearMostrar = false }">Cancelar</UButton>
+            <UButton
+               variant="ghost"
+               color="neutral"
+               @click="
+                  () => {
+                     modalCrearMostrar = false
+                  }
+               "
+               >Cancelar</UButton
+            >
             <UButton type="submit" form="form-tipo-sala-crear" :loading="guardando">Guardar</UButton>
          </template>
       </UModal>
@@ -163,18 +189,34 @@ async function confirmarEliminar() {
             </UForm>
          </template>
          <template #footer>
-            <UButton variant="ghost" color="neutral" @click="() => { modalEditarMostrar = false }">Cancelar</UButton>
+            <UButton
+               variant="ghost"
+               color="neutral"
+               @click="
+                  () => {
+                     modalEditarMostrar = false
+                  }
+               "
+               >Cancelar</UButton
+            >
             <UButton type="submit" form="form-tipo-sala-editar" :loading="guardando">Guardar cambios</UButton>
          </template>
       </UModal>
 
       <!-- Confirmar eliminación -->
-      <ConfirmModal v-model:open="confirmEliminarMostrar" title="Eliminar tipo de sala" confirm-label="Eliminar"
-         confirm-icon="i-lucide-trash-2" confirm-color="error" :loading="eliminando" @confirm="confirmarEliminar">
+      <ConfirmModal
+         v-model:open="confirmEliminarMostrar"
+         title="Eliminar tipo de sala"
+         confirm-label="Eliminar"
+         confirm-icon="i-lucide-trash-2"
+         confirm-color="error"
+         :loading="eliminando"
+         @confirm="confirmarEliminar"
+      >
          <p class="text-sm text-usm-text dark:text-slate-200">
             ¿Eliminar el tipo
-            <span class="font-semibold">{{ tipoAEliminar?.nombre }}</span>?
-            Solo es posible si no hay salas con este tipo asignado.
+            <span class="font-semibold">{{ tipoAEliminar?.nombre }}</span
+            >? Solo es posible si no hay salas con este tipo asignado.
          </p>
       </ConfirmModal>
    </div>

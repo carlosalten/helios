@@ -7,6 +7,8 @@ export interface AyudantiaResumen {
    carreraCodigo: number
    planId: number
    planNumero: number
+   // Semestre del curso del paralelo — lo usa la exportación CSV de /ayudantias/resumen.
+   semestreId: number
    asignaturaCodigo: string
    asignaturaNombre: string
    paraleloCodigo: string
