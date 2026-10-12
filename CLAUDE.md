@@ -93,7 +93,7 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 - **`curso_numero_semestre_rango`** — en `curso`, `numero_semestre` entre 1 y 12.
 - **`paralelo_cupo_rango`** — en `paralelo`, `cupo` entre 0 y 100.
 - **`feriado_horas_validas`** — en `feriado`, `hora_inicio`/`hora_termino` van ambos `null` (feriado de día completo) o ambos con valor y `hora_termino > hora_inicio` (feriado parcial).
-- **`asignatura_equivalencia_no_refleja`** — en `asignatura_equivalencia`, `asignatura_id <> equivalente_id` (una asignatura no puede ser equivalente a sí misma).
+- **`asignatura_plan_equivalente_plan_id_asignatura_id_key`** — índice único en `asignatura_plan_equivalente` (`plan_id`, `asignatura_id`): dentro de un plan, una asignatura es equivalente a lo más a una asignatura de la malla. Las equivalencias son por plan y dirigidas (ya no existe la tabla global `asignatura_equivalencia`); que la equivalente no sea la propia asignatura ni otra de la malla se valida en `server/api/asignaturas/equivalencias/toggle.post.ts`.
 - **`tt_profesor_cupo_maximo_positivo`** — en `tt_profesor`, `cupo_maximo >= 1`.
 - **`tt_comision_propuesta_id_guia_key`** — índice único parcial en `tt_comision` (`propuesta_id`) `WHERE rol = 'Guía'`: una propuesta no puede tener más de un profesor guía asignado a la vez (sí puede tener varias filas de comisión con otros roles).
 
@@ -115,13 +115,23 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 
 ### Control de acceso por rol (real)
 
-Hay control de acceso por rol basado en la tabla `permiso` (`rol` + `ruta` + `accion`):
+Hay control de acceso por rol basado en la tabla `permiso` (`rol` + `ruta` + `accion`). El guard **no confía en la sesión**: en cada request relee la persona desde la BD (`server/utils/permisos.ts`):
 
 ```ts
-export async function requierePermiso(event, ruta, accion) {
+// Resumen de server/utils/permisos.ts
+async function usuarioActualizado(event) {
    const { user } = await getUserSession(event)
    if (!user) throw createError({ statusCode: 401 })
-   const usuario = user as { email: string; rol: string }
+   const persona = await prisma.persona.findUnique({ where: { email: user.email }, include: { rol: true } })
+   if (!persona || !persona.activo) {
+      await clearUserSession(event) // cuenta borrada o bloqueada: la sesión deja de valer
+      throw createError({ statusCode: 401 })
+   }
+   return { email, rol: persona.rol.nombre, jerarquiaRol: persona.rol.jerarquia, nombre, apellido }
+}
+
+export async function requierePermiso(event, ruta, accion) {
+   const usuario = await usuarioActualizado(event)
    if (usuario.rol === 'Administrador') return usuario // bypass total
    const permiso = await prisma.permiso.findUnique({
       where: { rol_ruta_accion: { rol: usuario.rol, ruta, accion } },
@@ -131,16 +141,19 @@ export async function requierePermiso(event, ruta, accion) {
 }
 ```
 
+- **Revalidación en cada request**: rol, `activo` y jerarquía salen de la BD, no de la cookie (que dura 8 h). Un bloqueo o un cambio de rol tiene efecto inmediato en el backend, aunque el usuario siga con la sesión abierta.
+- **`requiereAlgunPermiso(event, [[ruta, accion], …])`**: igual, pero basta con cumplir una de las combinaciones. Se usa en endpoints de lectura que alimentan a más de una página (p. ej. `/api/semestres`, `/api/salas`, el stream SSE de `/api/horario/eventos`).
 - **`Administrador`** tiene bypass hardcodeado (nunca se guarda como fila en `permiso`), para no quedar bloqueado por un seed o borrado accidental.
 - El resto de roles (`Director Departamento`, `Jefe de Carrera`, `Profesor`, `Apoyo Docente`) necesitan una fila `(rol, ruta, accion)` para cada acción. El Administrador administra esto desde la página `/permisos`.
 - `'/permisos'` es una ruta protegida pero **no asignable**: solo el Administrador la ve.
 - Acciones: `ver`, `crear`, `editar`, `borrar` (genéricas) y, solo para `/personas/gestion`, las finas `contrasena`, `cambiarrol`, `activar` (gestionan la cuenta de acceso, no solo los datos de la persona).
 - El **login se hace contra `Persona`** (`server/api/auth/login.post.ts`): `Persona.password` es nullable — una persona sin contraseña no tiene cuenta de acceso, solo agenda/reservas. `usuario.rol` en `requierePermiso`/sesión es el nombre de la fila de `Rol` asociada (`persona.rol.nombre`), no un enum fijo en TS.
-- Al hacer login se calculan `permisos` (agrupados por ruta) y, si el rol es `Jefe de Carrera`, `carrerasJefe` (vía `resolverCarrerasJefe`). Ambos se guardan en la sesión Nuxt y se usan en el frontend para ocultar navegación y páginas.
+- Al hacer login se calculan `permisos` y, si el rol es `Jefe de Carrera`, `carrerasJefe` (vía `resolverCarrerasJefe`). Ambos se guardan en la sesión Nuxt y **solo los usa el frontend** para ocultar navegación, páginas y botones: quedan congelados hasta el próximo login (un permiso nuevo exige re-loguearse para verse en la UI), pero el backend no depende de ellos.
+- **Tamaño de la cookie**: nuxt-auth-utils guarda la sesión completa sellada en la cookie, y el navegador la descarta en silencio si pasa de 4096 bytes (el login "no funciona" sin error en el servidor). Por eso `permisos` va **codificado** en la sesión como `string[]` `"ruta:letras"` (p. ej. `"/cursos:vceb"`), con `codificarPermisosSesion` al hacer login y `tienePermisoSesion` para leerlo (`app/types/permiso.ts`; lo usan `usePermiso`, `auth.global.ts` y el sidebar). No leas `user.permisos` a mano, y al agregar campos a la sesión mide la cookie del rol con más permisos.
 
 ### Alcance por carrera (Jefe de Carrera)
 
-`resolverCarrerasJefe(rol, email)` (en `server/utils/carreras.ts`... ver `alcanceCarrera.ts`) devuelve `null` (sin restricción) para todo rol distinto de `Jefe de Carrera`, o `number[]` con los códigos de carrera de los que la persona es jefe. Los endpoints de horario filtran/validan contra ese `carrerasPermitidas`.
+`resolverCarrerasJefe(rol, email)` (en `server/utils/alcanceCarrera.ts`) devuelve `null` (sin restricción) para todo rol distinto de `Jefe de Carrera`, o `number[]` con los códigos de carrera de los que la persona es jefe. Los endpoints de horario filtran/validan contra ese `carrerasPermitidas`.
 
 ### Reglas obligatorias al crear endpoints
 

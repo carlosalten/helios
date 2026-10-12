@@ -11,31 +11,29 @@ const [{ data: semestres, status }, { data: bloques, refresh: refrescarBloques }
 ])
 
 const { puedeCrear } = usePermiso('/bloques/copiar')
+const { esSemestreSeleccionable } = useVisibilidadSemestre()
 
 const semestreOrigenId = ref<number | undefined>(undefined)
 const semestreDestinoId = ref<number | undefined>(undefined)
 
 const opcionesSemestre = computed(() =>
-   (semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })),
+   (semestres.value ?? []).filter(esSemestreSeleccionable).map((s) => ({ label: s.nombre, value: s.id }))
 )
 
-const bloquesOrigen = computed(() =>
-   (bloques.value ?? []).filter((b) => b.semestreId === semestreOrigenId.value),
-)
-const bloquesDestino = computed(() =>
-   (bloques.value ?? []).filter((b) => b.semestreId === semestreDestinoId.value),
+const bloquesOrigen = computed(() => (bloques.value ?? []).filter((b) => b.semestreId === semestreOrigenId.value))
+const bloquesDestino = computed(() => (bloques.value ?? []).filter((b) => b.semestreId === semestreDestinoId.value))
+
+const mismoSemestre = computed(
+   () => semestreOrigenId.value !== undefined && semestreOrigenId.value === semestreDestinoId.value
 )
 
-const mismoSemestre = computed(() =>
-   semestreOrigenId.value !== undefined && semestreOrigenId.value === semestreDestinoId.value,
-)
-
-const puedeCopiar = computed(() =>
-   puedeCrear.value &&
-   semestreOrigenId.value !== undefined &&
-   semestreDestinoId.value !== undefined &&
-   !mismoSemestre.value &&
-   bloquesOrigen.value.length > 0,
+const puedeCopiar = computed(
+   () =>
+      puedeCrear.value &&
+      semestreOrigenId.value !== undefined &&
+      semestreDestinoId.value !== undefined &&
+      !mismoSemestre.value &&
+      bloquesOrigen.value.length > 0
 )
 
 /* ── Copiar ──────────────────────────────────────────────── */
@@ -47,13 +45,10 @@ async function copiarBloques() {
    copiando.value = true
    resultado.value = null
    try {
-      resultado.value = await $fetch<{ copiados: number; omitidos: number; total: number }>(
-         '/api/bloques/copiar',
-         {
-            method: 'POST',
-            body: { semestreOrigenId: semestreOrigenId.value, semestreDestinoId: semestreDestinoId.value },
-         },
-      )
+      resultado.value = await $fetch<{ copiados: number; omitidos: number; total: number }>('/api/bloques/copiar', {
+         method: 'POST',
+         body: { semestreOrigenId: semestreOrigenId.value, semestreDestinoId: semestreDestinoId.value },
+      })
       await refrescarBloques()
       toast.add({
          title: `${resultado.value.copiados} bloque${resultado.value.copiados !== 1 ? 's' : ''} copiado${resultado.value.copiados !== 1 ? 's' : ''}`,
@@ -77,8 +72,8 @@ function formatHora(hora: string) {
    <div class="space-y-6">
       <div>
          <p class="text-sm text-usm-text-muted dark:text-slate-400">
-            Copia los bloques horarios de un semestre a otro. Los bloques cuyo número ya exista en el semestre
-            de destino no se duplican ni se sobrescriben.
+            Copia los bloques horarios de un semestre a otro. Los bloques cuyo número ya exista en el semestre de
+            destino no se duplican ni se sobrescriben.
          </p>
       </div>
 
@@ -88,13 +83,26 @@ function formatHora(hora: string) {
          <div class="rounded-2xl border border-default bg-default p-4 sm:p-6 space-y-4">
             <div class="grid gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
                <UFormField label="Semestre de origen">
-                  <USelect v-model="semestreOrigenId" :items="opcionesSemestre" value-key="value"
-                     placeholder="Selecciona un semestre" class="w-full" />
+                  <USelect
+                     v-model="semestreOrigenId"
+                     :items="opcionesSemestre"
+                     value-key="value"
+                     placeholder="Selecciona un semestre"
+                     class="w-full"
+                  />
                </UFormField>
-               <UIcon name="i-lucide-arrow-right" class="hidden size-5 shrink-0 justify-self-center text-usm-text-muted dark:text-slate-400 sm:block" />
+               <UIcon
+                  name="i-lucide-arrow-right"
+                  class="hidden size-5 shrink-0 justify-self-center text-usm-text-muted dark:text-slate-400 sm:block"
+               />
                <UFormField label="Semestre de destino">
-                  <USelect v-model="semestreDestinoId" :items="opcionesSemestre" value-key="value"
-                     placeholder="Selecciona un semestre" class="w-full" />
+                  <USelect
+                     v-model="semestreDestinoId"
+                     :items="opcionesSemestre"
+                     value-key="value"
+                     placeholder="Selecciona un semestre"
+                     class="w-full"
+                  />
                </UFormField>
             </div>
 
@@ -102,11 +110,15 @@ function formatHora(hora: string) {
                El semestre de origen y destino deben ser distintos.
             </p>
 
-            <div v-if="semestreOrigenId !== undefined && semestreDestinoId !== undefined && !mismoSemestre"
-               class="flex flex-col gap-2 rounded-xl bg-usm-light dark:bg-slate-800 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <div
+               v-if="semestreOrigenId !== undefined && semestreDestinoId !== undefined && !mismoSemestre"
+               class="flex flex-col gap-2 rounded-xl bg-usm-light dark:bg-slate-800 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+            >
                <span class="text-usm-text dark:text-slate-200">
-                  <span class="font-semibold">{{ bloquesOrigen.length }}</span> bloque{{ bloquesOrigen.length !== 1 ? 's' : '' }} en el origen ·
-                  <span class="font-semibold">{{ bloquesDestino.length }}</span> ya en el destino
+                  <span class="font-semibold">{{ bloquesOrigen.length }}</span> bloque{{
+                     bloquesOrigen.length !== 1 ? 's' : ''
+                  }}
+                  en el origen · <span class="font-semibold">{{ bloquesDestino.length }}</span> ya en el destino
                </span>
             </div>
 
@@ -135,15 +147,21 @@ function formatHora(hora: string) {
             </div>
          </div>
 
-         <EmptyState v-if="!semestres?.length" icon="i-lucide-calendar-range"
-            message="Primero crea al menos dos semestres para poder copiar bloques entre ellos" />
+         <EmptyState
+            v-if="!semestres?.length"
+            icon="i-lucide-calendar-range"
+            message="Primero crea al menos dos semestres para poder copiar bloques entre ellos"
+         />
 
          <!-- Vista previa de bloques del origen -->
          <div v-else-if="semestreOrigenId !== undefined && bloquesOrigen.length" class="space-y-2">
             <h3 class="text-sm font-semibold text-usm-text dark:text-white">Bloques del semestre de origen</h3>
             <div class="overflow-hidden rounded-2xl border border-default bg-default divide-y divide-default">
-               <div v-for="bloque in bloquesOrigen" :key="bloque.id"
-                  class="flex items-center justify-between px-4 py-2.5 text-sm">
+               <div
+                  v-for="bloque in bloquesOrigen"
+                  :key="bloque.id"
+                  class="flex items-center justify-between px-4 py-2.5 text-sm"
+               >
                   <span class="text-usm-text dark:text-white">N° {{ bloque.numero }}</span>
                   <span class="text-usm-text-muted dark:text-slate-400">
                      {{ formatHora(bloque.inicio) }} – {{ formatHora(bloque.fin) }}

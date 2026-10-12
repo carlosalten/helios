@@ -14,13 +14,23 @@ export interface Asignatura {
    }[]
 }
 
-// Fila del panel derecho de /asignaturas/equivalencias: cada asignatura del sistema con el
-// booleano de si es equivalente a la seleccionada (GET /api/asignaturas/[id]/equivalencias).
-export interface AsignaturaConEquivalencia {
+// Equivalencias de un plan para /asignaturas/equivalencias (GET /api/asignaturas/equivalencias):
+// la malla con las equivalentes de cada asignatura, y las candidatas (asignaturas fuera de la
+// malla). Ver AsignaturaPlanEquivalente en schema.prisma.
+export interface AsignaturaBasica {
    id: number
    codigo: string
    nombre: string
-   equivalente: boolean
+}
+export interface AsignaturaMallaConEquivalentes extends AsignaturaBasica {
+   asignaturaPlanId: number
+   semestre: number
+   esElectiva: boolean
+   equivalentes: AsignaturaBasica[]
+}
+export interface EquivalenciasPlan {
+   malla: AsignaturaMallaConEquivalentes[]
+   candidatas: AsignaturaBasica[]
 }
 
 // Fila del panel "Profesores que han dictado esta asignatura" de /horario (GET

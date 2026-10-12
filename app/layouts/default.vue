@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { tienePermisoSesion } from '~/types/permiso'
 
 const { user, fetch: fetchSession } = useUserSession()
 const route = useRoute()
@@ -78,7 +79,15 @@ const gruposNav: NavItem[][] = [
       },
    ],
    [
-      { to: '/semestres', icon: 'i-lucide-calendar-range', label: 'Semestres' },
+      {
+         to: '/semestres',
+         icon: 'i-lucide-calendar-range',
+         label: 'Semestres',
+         children: [
+            { to: '/semestres', label: 'Gestión de semestres' },
+            { to: '/semestres/resumen', label: 'Vigente y borrador' },
+         ],
+      },
       {
          to: '/bloques',
          icon: 'i-lucide-clock',
@@ -117,6 +126,7 @@ const gruposNav: NavItem[][] = [
          children: [
             { to: '/horario', label: 'Horarios de carreras' },
             { to: '/horario/profesor', label: 'Horario de profesor' },
+            { to: '/horario/salas', label: 'Horario de salas' },
          ],
       },
       {
@@ -224,7 +234,9 @@ const pageTitles: Record<string, string> = {
    '/horario': 'Horario',
    '/horario/profesor': 'Horario de profesor',
    '/horario/profesores': 'Bloques por profesor',
+   '/horario/salas': 'Horario de salas del semestre',
    '/semestres': 'Semestres',
+   '/semestres/resumen': 'Semestre vigente y borrador',
    '/bloques': 'Bloques horarios',
    '/bloques/copiar': 'Copiar bloques entre semestres',
    '/reportes/bloques-libres': 'Bloques Libres Estudiantes',
@@ -287,7 +299,7 @@ function puedeVer(to: string) {
    return (
       user.value?.rol === 'Administrador' ||
       RUTAS_SIN_RESTRICCION.includes(to) ||
-      (user.value?.permisos?.some((p) => p.ruta === to && p.acciones.includes('ver')) ?? false)
+      tienePermisoSesion(user.value?.permisos, to, 'ver')
    )
 }
 

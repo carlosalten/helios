@@ -16,6 +16,10 @@ export interface Rol {
    // Si las personas de este rol pueden suspender/reactivar cualquier reserva en
    // /reservas/horario, no solo las propias — administrable desde /configuracion.
    suspenderCualquierReserva: boolean
+   // Si las personas de este rol ven el semestre marcado como borrador en los selectores de
+   // semestre aunque esté oculto (Semestre.visible = false) — administrable desde
+   // /configuracion.
+   verSemestreBorrador: boolean
 }
 
 export interface PersonaBase {

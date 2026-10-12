@@ -16,13 +16,18 @@ function labelPlan(plan: Plan) {
    return `${plan.carrera.nombre} — Plan N° ${plan.numero}${plan.vigente ? ' · Vigente' : ''}`
 }
 const opcionesPlan = computed(() => (planes.value ?? []).map((p) => ({ label: labelPlan(p), value: p.id })))
-const opcionesSemestre = computed(() => (semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })))
+const { esSemestreSeleccionable, semestrePorDefecto } = useVisibilidadSemestre()
+const opcionesSemestre = computed(() =>
+   (semestres.value ?? [])
+      .filter((s) => esSemestreSeleccionable(s) || s.id === semestreSeleccionadoId.value)
+      .map((s) => ({ label: s.nombre, value: s.id }))
+)
 
 const planesSeleccionados = ref<number[]>([])
 const semestreSeleccionadoId = ref<number>()
 watchEffect(() => {
    if (semestreSeleccionadoId.value == null && semestres.value?.length) {
-      semestreSeleccionadoId.value = semestres.value.find((s) => s.vigente)?.id ?? semestres.value[0]!.id
+      semestreSeleccionadoId.value = semestrePorDefecto(semestres.value)?.id ?? semestres.value[0]!.id
    }
 })
 

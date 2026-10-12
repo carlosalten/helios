@@ -13,19 +13,22 @@ const [{ data: bloques, status, refresh }, { data: semestres }] = await Promise.
 ])
 
 const { puedeCrear, puedeEditar, puedeBorrar } = usePermiso('/bloques')
+const { esSemestreSeleccionable, semestrePorDefecto } = useVisibilidadSemestre()
 
-const semestreVigenteId = computed(() => semestres.value?.find((s) => s.vigente)?.id)
+const semestrePredeterminadoId = computed(() => semestrePorDefecto(semestres.value ?? [])?.id)
 
-const filtroSemestre = ref<number | '__todos__'>(semestreVigenteId.value ?? '__todos__')
+const filtroSemestre = ref<number | '__todos__'>(semestrePredeterminadoId.value ?? '__todos__')
 
 const bloquesFiltrados = computed(() => {
    if (filtroSemestre.value === '__todos__') return bloques.value ?? []
    return (bloques.value ?? []).filter((b) => b.semestreId === filtroSemestre.value)
 })
 
+const semestresVisibles = computed(() => (semestres.value ?? []).filter(esSemestreSeleccionable))
+
 const opcionesSemestre = computed(() => [
    { label: 'Todos los semestres', value: '__todos__' as const },
-   ...(semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })),
+   ...semestresVisibles.value.map((s) => ({ label: s.nombre, value: s.id })),
 ])
 
 const { paginaActual, itemsPagina: bloquesPagina, porPagina } = usePaginacion(bloquesFiltrados)
@@ -78,7 +81,7 @@ const guardando = ref(false)
 const errorGuardar = ref<string | null>(null)
 
 function abrirCrear() {
-   formCrear.semestreId = semestreVigenteId.value ?? semestres.value?.[0]?.id ?? 0
+   formCrear.semestreId = semestrePredeterminadoId.value ?? semestresVisibles.value[0]?.id ?? 0
    formCrear.numero = 1
    formCrear.inicio = ''
    formCrear.fin = ''
@@ -120,6 +123,15 @@ const formEditar = reactive({
    diasProtegidos: [] as number[],
 })
 const errorEditar = ref<string | null>(null)
+
+// Al editar, conserva el semestre ya asignado en las opciones aunque esté oculto — si no, el
+// USelect quedaría con un `value` que no está en `items` y mostraría el ID crudo en vez del
+// nombre del semestre.
+const opcionesSemestreEditar = computed(() =>
+   (semestres.value ?? [])
+      .filter((s) => esSemestreSeleccionable(s) || s.id === formEditar.semestreId)
+      .map((s) => ({ label: s.nombre, value: s.id }))
+)
 
 function abrirEditar(bloque: Bloque) {
    bloqueEditar.value = bloque
@@ -284,7 +296,7 @@ async function confirmarEliminar() {
                <UFormField label="Semestre" name="semestreId" :error="errorGuardar ?? undefined">
                   <USelect
                      v-model="formCrear.semestreId"
-                     :items="(semestres ?? []).map((s) => ({ label: s.nombre, value: s.id }))"
+                     :items="semestresVisibles.map((s) => ({ label: s.nombre, value: s.id }))"
                      value-key="value"
                      class="w-full"
                   />
@@ -376,7 +388,7 @@ async function confirmarEliminar() {
                <UFormField label="Semestre" name="semestreId" :error="errorEditar ?? undefined">
                   <USelect
                      v-model="formEditar.semestreId"
-                     :items="(semestres ?? []).map((s) => ({ label: s.nombre, value: s.id }))"
+                     :items="opcionesSemestreEditar"
                      value-key="value"
                      class="w-full"
                   />

@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
       ['/salas/pantallas', 'ver'],
       ['/salas/asignacion', 'ver'],
       ['/reservas/horario', 'ver'],
+      ['/horario/salas', 'ver'],
       ['/reservas/imprimir', 'ver'],
       ['/ayudantias', 'ver'],
    ])

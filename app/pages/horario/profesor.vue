@@ -21,13 +21,18 @@ const { puedeEditar: puedeEditarReservas } = usePermiso('/reservas/horario')
 const misSalasEncargadoSet = computed(() => new Set(misSalasEncargado.value ?? []))
 
 /* ── Semestre: define la plantilla de bloques y acota las clases ─────────── */
+const { esSemestreSeleccionable, semestrePorDefecto } = useVisibilidadSemestre()
 const semestreSeleccionadoId = ref<number>()
 watchEffect(() => {
    if (semestreSeleccionadoId.value == null && semestres.value?.length) {
-      semestreSeleccionadoId.value = semestres.value.find((s) => s.vigente)?.id ?? semestres.value[0]!.id
+      semestreSeleccionadoId.value = semestrePorDefecto(semestres.value)?.id ?? semestres.value[0]!.id
    }
 })
-const opcionesSemestre = computed(() => (semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })))
+const opcionesSemestre = computed(() =>
+   (semestres.value ?? [])
+      .filter((s) => esSemestreSeleccionable(s) || s.id === semestreSeleccionadoId.value)
+      .map((s) => ({ label: s.nombre, value: s.id }))
+)
 
 const bloquesSemestre = computed(() =>
    (bloquesRaw.value ?? [])

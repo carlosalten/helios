@@ -18,6 +18,9 @@ export interface SesionParalelo {
       cupo: number
       color: string | null
       curso: { id: number; nombre: string }
+      // Equivalente desde la que se programó (null = asignatura de la malla). Para mostrar,
+      // usar `asignaturaVisible(paralelo)`.
+      asignaturaEquivalente: { id: number; codigo: string; nombre: string; nombreCorto: string | null } | null
       asignaturaPlan: {
          asignatura: { id: number; codigo: string; nombre: string; bloquesTeoria: number; bloquesPractica: number }
          plan: { carrera: { codigo: number; nombre: string } }

@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
       ['/horario', 'ver'],
       ['/horario/profesor', 'ver'],
       ['/reservas/horario', 'ver'],
+      ['/horario/salas', 'ver'],
       ['/reservas/imprimir', 'ver'],
       ['/ayudantias', 'ver'],
    ])

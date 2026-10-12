@@ -1,5 +1,4 @@
-import type { PermisoResumen } from './permiso'
-import type { TemaPreferido } from './preferencias'
+import type { SemestrePorDefecto, TemaPreferido } from './preferencias'
 
 // Forma del usuario de la sesión Nuxt (`#auth-utils`'s `User`, ver app/types/auth.d.ts). Cubre
 // dos tipos de sesión, distinguidos por `tipo` — no son la misma cuenta ni la misma tabla (ver
@@ -31,12 +30,19 @@ export interface SesionUsuario {
    // cualquier reserva en /reservas/horario, no solo las propias (administrable desde
    // /configuracion). Ver server/utils/alcanceReservas.ts (`puedeSuspenderReserva`).
    puedeSuspenderCualquierReserva?: boolean
+   // Rol.verSemestreBorrador al momento de iniciar sesión — si ve el semestre marcado como
+   // borrador en los selectores de semestre aunque esté oculto (administrable desde
+   // /configuracion). 'Administrador' lo ve siempre sin importar este valor. Ver
+   // Semestre.visible.
+   puedeVerSemestreBorrador?: boolean
    // Id de la Persona detrás de la sesión — permite al frontend comparar `Reserva.personaId`
    // para saber si una reserva es propia sin otro fetch (ver reservas/horario.vue).
    personaId?: number
    // Populados al iniciar sesión. Vacío/null para Administrador, que tiene acceso total
-   // vía bypass y no necesita filas de permiso.
-   permisos?: PermisoResumen[]
+   // vía bypass y no necesita filas de permiso. `permisos` va codificado ("ruta:letras") para
+   // que la cookie no supere los 4096 bytes — se consulta con `tienePermisoSesion`
+   // (app/types/permiso.ts), nunca a mano.
+   permisos?: string[]
    carrerasJefe?: number[] | null
    // Códigos de carrera que la persona dirige o tiene asignadas (CarreraPersona) — usado para
    // acotar qué ve en /horario (ver resolverCarrerasAsignadas). `null` = sin restricción
@@ -49,6 +55,10 @@ export interface SesionUsuario {
    // qué color — ver /cuenta/preferencias y `topeEsEspejo` en horario/index.vue.
    mostrarTopesEspejo?: boolean
    colorTopesEspejo?: string
+   // Semestre que preseleccionan los selectores de semestre (ver useVisibilidadSemestre). Se
+   // elige en /semestres y, a diferencia del resto de las preferencias, se actualiza en la
+   // sesión al guardarlo (ver server/api/preferencias.patch.ts).
+   semestrePorDefecto?: SemestrePorDefecto
    // Nulo: sin emoji asignado. Se muestra flotando sobre el círculo de iniciales en el navbar
    // (ver app/layouts/default.vue) — elegido de
    // https://unicode.org/emoji/charts/full-emoji-list.html en /personas/gestion.

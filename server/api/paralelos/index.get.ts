@@ -24,6 +24,7 @@ export default defineEventHandler(async (event) => {
                plan: { include: { carrera: true } },
             },
          },
+         asignaturaEquivalente: { select: { id: true, codigo: true, nombre: true, nombreCorto: true } },
       },
    })
 })

@@ -13,6 +13,9 @@ export interface AsignaturaPlan {
       bloquesTeoria: number
       bloquesPractica: number
    }
+   // Equivalentes de esta asignatura en este plan (AsignaturaPlanEquivalente). Solo lo trae
+   // GET /api/asignaturas-plan; no viene dentro de un Paralelo.
+   equivalentes?: { asignatura: { id: number; codigo: string; nombre: string } }[]
    plan: {
       id: number
       numero: number

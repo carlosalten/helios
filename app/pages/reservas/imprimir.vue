@@ -330,7 +330,7 @@ function profesorDe(reserva: Reserva) {
 // Nombre a mostrar de la asignatura: el corto si la asignatura tiene uno definido, si no el
 // completo. Mismo criterio en /reservas/horario.
 function nombreAsignaturaDe(reserva: Reserva) {
-   const asignatura = reserva.sesionParalelo?.paralelo.asignaturaPlan.asignatura
+   const asignatura = reserva.sesionParalelo ? asignaturaVisible(reserva.sesionParalelo.paralelo) : null
    return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
 }
 

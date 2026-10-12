@@ -19,16 +19,20 @@ export default defineEventHandler(async (event) => {
    if (carrerasPermitidas && !carrerasPermitidas.includes(asignaturaPlan.plan.carreraCodigo)) {
       throw createError({ statusCode: 404, message: 'Asignatura no encontrada en el plan' })
    }
+   if (parsed.data.asignaturaEquivalenteId != null) {
+      await validarAsignaturaEquivalente(asignaturaPlan.id, parsed.data.asignaturaEquivalenteId)
+   }
 
    const orden = await siguienteOrdenParalelo(parsed.data.cursoId)
 
    const creado = await prisma.paralelo.create({
-      data: { ...parsed.data, orden },
+      data: { ...parsed.data, asignaturaEquivalenteId: parsed.data.asignaturaEquivalenteId ?? null, orden },
       include: {
          curso: { include: { semestre: true } },
          asignaturaPlan: {
             include: { asignatura: true, plan: { include: { carrera: true } } },
          },
+         asignaturaEquivalente: { select: { id: true, codigo: true, nombre: true, nombreCorto: true } },
       },
    })
 
