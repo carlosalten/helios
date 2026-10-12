@@ -4,6 +4,7 @@
 export default defineEventHandler(async (event) => {
    const usuario = await requiereAlgunPermiso(event, [
       ['/reservas/horario', 'ver'],
+      ['/horario/salas', 'ver'],
       ['/reservas/imprimir', 'ver'],
       ['/ayudantias', 'ver'],
    ])
@@ -42,7 +43,11 @@ export default defineEventHandler(async (event) => {
          sesionParalelo: {
             include: {
                paralelo: {
-                  include: { asignaturaPlan: { include: { asignatura: true, plan: { include: { carrera: true } } } } },
+                  include: {
+                     asignaturaPlan: { include: { asignatura: true, plan: { include: { carrera: true } } } },
+                     // La equivalente desde la que se programó, si hay: es la que se muestra.
+                     asignaturaEquivalente: true,
+                  },
                },
             },
          },

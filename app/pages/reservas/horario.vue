@@ -341,6 +341,8 @@ function bloqueNumeroDe(horaISO: string) {
 // mismo paralelo en una sola tarjeta que abarca desde el inicio del primero hasta el fin del
 // último, para no mostrar una clase de 3 horas como 3 cuadros separados. Solo aplica a
 // reservas de clase (`sesionParalelo`): Ayudantías y demás tipos de reserva pasan tal cual.
+// No se fusionan bloques con distinto profesor (`personaId`, el responsable de la reserva):
+// la tarjeta muestra uno solo y se perdería quién dicta el resto.
 // Además de fusionar, registra en `idsFusionados` el id de toda tarjeta resultante de 2+
 // bloques — `esClaseFusionada` usa ese registro para bloquear editar/mover/suspender/borrar
 // sobre esa tarjeta (ver el comentario en `puedeModificarReserva`).
@@ -373,7 +375,7 @@ function fusionarClasesContiguas(reservasDia: Reserva[], idsFusionados: Set<numb
          const bloqueActual = bloqueNumeroDe(r.inicio)
          const esContiguo =
             actual && bloqueAnterior != null && bloqueActual != null && bloqueActual === bloqueAnterior + 1
-         if (esContiguo && actual!.suspendida === r.suspendida) {
+         if (esContiguo && actual!.suspendida === r.suspendida && actual!.personaId === r.personaId) {
             actual = { ...actual!, fin: r.fin }
             cantidad++
          } else {
@@ -1251,7 +1253,7 @@ function profesorDe(reserva: Reserva) {
 // Nombre a mostrar de la asignatura de una reserva de sesión de clases: el corto si la
 // asignatura tiene uno definido, si no el completo. Mismo criterio en /reservas/imprimir.
 function nombreAsignaturaDe(reserva: Reserva) {
-   const asignatura = reserva.sesionParalelo?.paralelo.asignaturaPlan.asignatura
+   const asignatura = reserva.sesionParalelo ? asignaturaVisible(reserva.sesionParalelo.paralelo) : null
    return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
 }
 

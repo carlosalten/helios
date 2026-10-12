@@ -206,7 +206,7 @@ interface FilaHorario {
 
 // Lo que el plan define para una asignatura, indexado por código. `codigoPlan` es el código
 // tal como está en el plan: difiere del código del CSV cuando la fila entró por una
-// equivalencia (ver AsignaturaEquivalencia en schema.prisma).
+// equivalencia del plan (ver AsignaturaPlanEquivalente en schema.prisma).
 interface DatosAsignaturaPlan {
    asignaturaPlanId: number
    semestre: number
@@ -252,8 +252,13 @@ interface SesionPlaneada {
 interface ParaleloPlaneado {
    codigo: string
    cupo: number
+   // Código que se muestra (título de las reservas): el de la equivalente si entró como tal, si
+   // no el de la asignatura del plan.
    asignaturaCodigo: string
    asignaturaPlanId: number
+   // Equivalente por la que entró el paralelo (ver Paralelo.asignaturaEquivalenteId); null si
+   // algún código del CSV es el de la asignatura del plan.
+   asignaturaEquivalenteId: number | null
    cursoNombre: string
    sesiones: SesionPlaneada[]
 }
@@ -458,9 +463,8 @@ export async function analizarCargaMasiva(
          prisma.asignaturaPlan.findMany({
             where: { planId },
             include: {
-               asignatura: {
-                  include: { equivalencias: { select: { equivalente: { select: { codigo: true } } } } },
-               },
+               asignatura: true,
+               equivalentes: { select: { asignatura: { select: { id: true, codigo: true } } } },
             },
          }),
          prisma.asignatura.findMany({ where: { codigo: { in: codigosAsignatura } }, select: { codigo: true } }),
@@ -486,33 +490,46 @@ export async function analizarCargaMasiva(
       ])
    )
 
-   // Una asignatura equivalente a una del plan (ver AsignaturaEquivalencia en schema.prisma) se
-   // acepta como si fuera la del plan: sus paralelos cuelgan de la AsignaturaPlan del código que
-   // sí está en el plan. Esto cubre el caso de un plan con HCW100_T al que un semestre le
-   // programan HCW100. Un código que ya está en el plan por derecho propio nunca se pisa.
+   // Una asignatura equivalente a una del plan, en este plan (ver AsignaturaPlanEquivalente en
+   // schema.prisma), se acepta como si fuera la del plan: sus paralelos cuelgan de la
+   // AsignaturaPlan del código que sí está en la malla. Esto cubre el caso de un plan con
+   // HCW100-T al que un semestre le programan HCW100. La BD garantiza que un código es
+   // equivalente a lo más a una asignatura por plan, así que no hay ambigüedad; un código que
+   // ya está en la malla por derecho propio nunca se pisa.
    const porEquivalencia = new Map<string, DatosAsignaturaPlan>()
-   const equivalenciasAmbiguas = new Map<string, Set<string>>()
+   const equivalentePorCodigo = new Map<string, { id: number; codigo: string }>()
    for (const ap of asignaturasDelPlan) {
       const datos = porAsignaturaPlan.get(ap.asignatura.codigo.toUpperCase())!
-      for (const { equivalente } of ap.asignatura.equivalencias) {
+      for (const { asignatura: equivalente } of ap.equivalentes) {
          const codigo = equivalente.codigo.toUpperCase()
          if (porAsignaturaPlan.has(codigo)) continue
-         const previo = porEquivalencia.get(codigo)
-         if (previo && previo.asignaturaPlanId !== datos.asignaturaPlanId) {
-            // El mismo código equivale a dos asignaturas distintas de este plan: no hay forma de
-            // saber a cuál corresponde el paralelo, así que se reporta en vez de elegir una.
-            const conflicto = equivalenciasAmbiguas.get(codigo) ?? new Set([previo.codigoPlan])
-            conflicto.add(datos.codigoPlan)
-            equivalenciasAmbiguas.set(codigo, conflicto)
-            continue
-         }
          porEquivalencia.set(codigo, datos)
+         equivalentePorCodigo.set(codigo, equivalente)
       }
    }
 
    // Datos de plan de un código del CSV: primero por código propio, si no por equivalencia.
    const resolverAsignaturaPlan = (codigo: string) =>
       porAsignaturaPlan.get(codigo.toUpperCase()) ?? porEquivalencia.get(codigo.toUpperCase()) ?? null
+
+   // Un paralelo entró "como equivalente" si ningún código del CSV que cayó en él es el de la
+   // asignatura del plan; si llegaron varias equivalentes distintas, se guarda la primera en orden
+   // alfabético.
+   const equivalenteDe = (paralelo: ParaleloAgrupado) => {
+      if (paralelo.codigosCsv.has(paralelo.codigoPlan.toUpperCase())) return null
+      const [primero] = [...paralelo.codigosCsv].sort()
+      return primero ? (equivalentePorCodigo.get(primero) ?? null) : null
+   }
+   // Código y equivalente con los que se guarda un paralelo planeado: el título de sus reservas
+   // ("CODIGO · paralelo") usa el código de la equivalente si entró como tal, igual que
+   // tituloReservaSesion en el resto de la app.
+   const identidadPlaneada = (paralelo: ParaleloAgrupado) => {
+      const equivalente = equivalenteDe(paralelo)
+      return {
+         asignaturaCodigo: equivalente?.codigo ?? paralelo.codigoPlan,
+         asignaturaEquivalenteId: equivalente?.id ?? null,
+      }
+   }
 
    const asignaturasEnBd = new Set(asignaturasExistentes.map((a) => a.codigo.toUpperCase()))
    const porSala = new Map(salas.map((s) => [s.codigo.toUpperCase(), s.codigo]))
@@ -521,12 +538,8 @@ export async function analizarCargaMasiva(
    const celdasProtegidas = new Set(protegidos.map((p) => `${p.bloqueId}-${p.diaSemana}`))
 
    const asignaturasFaltantes = codigosAsignatura.filter((c) => !asignaturasEnBd.has(c.toUpperCase()))
-   const asignaturasAmbiguas = codigosAsignatura.filter((c) => equivalenciasAmbiguas.has(c.toUpperCase()))
    const asignaturasFueraDelPlan = codigosAsignatura.filter(
-      (c) =>
-         asignaturasEnBd.has(c.toUpperCase()) &&
-         !resolverAsignaturaPlan(c) &&
-         !equivalenciasAmbiguas.has(c.toUpperCase())
+      (c) => asignaturasEnBd.has(c.toUpperCase()) && !resolverAsignaturaPlan(c)
    )
    const salasFaltantes = codigosSala.filter((c) => !porSala.has(c.toUpperCase()))
    const profesoresFaltantes = emailsProfesor.filter((e) => !porEmail.has(e.toLowerCase()))
@@ -547,14 +560,6 @@ export async function analizarCargaMasiva(
       errores.push({
          titulo: 'Asignaturas que existen pero no están asociadas al plan (ni son equivalentes a una del plan)',
          detalles: asignaturasFueraDelPlan.sort(),
-      })
-   }
-   if (asignaturasAmbiguas.length) {
-      errores.push({
-         titulo: 'Asignaturas equivalentes a más de una asignatura de este plan',
-         detalles: asignaturasAmbiguas
-            .sort()
-            .map((c) => `${c} → ${[...equivalenciasAmbiguas.get(c.toUpperCase())!].sort().join(', ')}`),
       })
    }
    if (salasFaltantes.length) {
@@ -759,7 +764,7 @@ export async function analizarCargaMasiva(
       planeados.push({
          codigo: paralelo.codigo,
          cupo: paralelo.cupo,
-         asignaturaCodigo: paralelo.codigoPlan,
+         ...identidadPlaneada(paralelo),
          asignaturaPlanId: paralelo.asignaturaPlanId,
          cursoNombre: nombre,
          sesiones: paralelo.sesiones,
@@ -809,7 +814,7 @@ export async function analizarCargaMasiva(
          planeados.push({
             codigo: paralelo.codigo,
             cupo: paralelo.cupo,
-            asignaturaCodigo: paralelo.codigoPlan,
+            ...identidadPlaneada(paralelo),
             asignaturaPlanId: paralelo.asignaturaPlanId,
             cursoNombre: destino.nombre,
             sesiones: paralelo.sesiones,
@@ -837,7 +842,7 @@ export async function analizarCargaMasiva(
       planeados.push({
          codigo: paralelo.codigo,
          cupo: paralelo.cupo,
-         asignaturaCodigo: paralelo.codigoPlan,
+         ...identidadPlaneada(paralelo),
          asignaturaPlanId: paralelo.asignaturaPlanId,
          cursoNombre: nombre,
          sesiones: paralelo.sesiones,
@@ -1029,6 +1034,7 @@ export async function ejecutarCargaMasiva(ejecucion: EjecucionCargaMasiva): Prom
                orden,
                asignaturaPlanId: paralelo.asignaturaPlanId,
                cursoId,
+               asignaturaEquivalenteId: paralelo.asignaturaEquivalenteId,
             }
          })
          const paralelosCreados = await tx.paralelo.createManyAndReturn({

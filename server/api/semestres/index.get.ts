@@ -17,6 +17,7 @@ export default defineEventHandler(async (event) => {
       ['/paralelos/asignacion', 'ver'],
       ['/feriados', 'ver'],
       ['/reservas/horario', 'ver'],
+      ['/horario/salas', 'ver'],
       ['/reservas/imprimir', 'ver'],
       ['/bloques', 'ver'],
       ['/bloques/copiar', 'ver'],

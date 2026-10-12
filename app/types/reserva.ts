@@ -89,9 +89,12 @@ export interface Reserva {
          codigo: string
          // Color del paralelo en la matriz de horario; nulo mientras no se le asigne uno.
          color: string | null
+         // Equivalente desde la que se programó (null = asignatura de la malla). Para mostrar,
+         // usar `asignaturaVisible(paralelo)`.
+         asignaturaEquivalente: { codigo: string; nombre: string; nombreCorto: string | null } | null
          asignaturaPlan: {
             // `nombreCorto` nulo: se muestra `nombre` completo — ver `nombreAsignaturaDe`.
-            asignatura: { nombre: string; nombreCorto: string | null }
+            asignatura: { codigo: string; nombre: string; nombreCorto: string | null }
             plan: { numero: number; carreraCodigo: number; carrera: { nombre: string; nombreCorto: string } }
          }
       }

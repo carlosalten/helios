@@ -102,7 +102,9 @@ function fusionarBloquesContiguos(crudas: ReservaCruda[]): ClaseResumen[] {
             actual.bloqueNumero + 1 === r.bloqueNumero &&
             // Si solo un bloque de una clase de varias horas se suspende, no puede fundirse con
             // el resto en una sola entrada: se perdería justo el dato de cuál bloque suspendió.
-            actual.suspendida === r.suspendida
+            actual.suspendida === r.suspendida &&
+            // Tampoco si cambia el profesor: la entrada muestra un solo responsable.
+            actual.responsable === r.responsable
          ) {
             // Mismo criterio que `fusionarContiguas` en /reservas/imprimir: se extiende el
             // tramo actual en vez de crear uno nuevo.
@@ -163,7 +165,10 @@ export default defineEventHandler(async (event) => {
          sesionParalelo: {
             include: {
                paralelo: {
-                  include: { asignaturaPlan: { include: { asignatura: true, plan: { include: { carrera: true } } } } },
+                  include: {
+                     asignaturaPlan: { include: { asignatura: true, plan: { include: { carrera: true } } } },
+                     asignaturaEquivalente: true,
+                  },
                },
             },
          },
@@ -181,6 +186,7 @@ export default defineEventHandler(async (event) => {
 
    for (const r of reservas) {
       const paralelo = r.sesionParalelo?.paralelo ?? null
+      const mostrada = paralelo ? asignaturaVisibleParalelo(paralelo) : null
       const inicio = aHora(r.inicio)
       const fin = aHora(r.fin)
 
@@ -193,14 +199,14 @@ export default defineEventHandler(async (event) => {
       crudas.push({
          id: r.id,
          salaCodigo: r.salaCodigo,
-         titulo: r.titulo,
+         titulo: paralelo ? tituloReservaSesion(paralelo) : r.titulo,
          subtitulo: r.subtitulo,
          esClase: TIPOS_CLASE.includes(r.tipoReserva.nombre),
-         asignaturaCodigo: paralelo?.asignaturaPlan.asignatura.codigo ?? null,
+         // La asignatura que se muestra: la equivalente si el paralelo se programó desde una.
+         asignaturaCodigo: mostrada?.codigo ?? null,
          // Nombre corto si la asignatura tiene uno definido, si no el completo — mismo criterio
          // que /reservas/horario (ver `nombreAsignaturaDe`).
-         asignaturaNombre:
-            paralelo?.asignaturaPlan.asignatura.nombreCorto ?? paralelo?.asignaturaPlan.asignatura.nombre ?? null,
+         asignaturaNombre: mostrada ? (mostrada.nombreCorto ?? mostrada.nombre) : null,
          paraleloCodigo: paralelo?.codigo ?? null,
          carreraNombre: paralelo?.asignaturaPlan.plan.carrera.nombre ?? null,
          tipoReservaNombre: r.tipoReserva.nombre,

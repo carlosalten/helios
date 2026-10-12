@@ -27,6 +27,7 @@ function labelAsignaturaPlanCrear(ap: AsignaturaPlan) {
 
 const { puedeCrear, puedeEditar, puedeBorrar } = usePermiso('/paralelos')
 const { tieneAlcanceSobreCarrera } = useAlcanceCarrera()
+const { esSemestreSeleccionable, semestrePorDefecto } = useVisibilidadSemestre()
 
 // Ver la lista ya no se acota por carrera (ver /api/paralelos), pero editar/borrar sigue
 // acotado a la(s) carrera(s) que el usuario dirige — mismo criterio que usan los propios
@@ -62,7 +63,9 @@ const filtroSemestre = ref<number>()
 const filtroPlan = ref<number>()
 const busqueda = ref('')
 
-const opcionesSemestreReal = computed(() => (semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })))
+const opcionesSemestreReal = computed(() =>
+   (semestres.value ?? []).filter(esSemestreSeleccionable).map((s) => ({ label: s.nombre, value: s.id }))
+)
 
 // Para "Nuevo paralelo" el selector de plan queda acotado a las asignaturas que el usuario
 // puede administrar (/api/asignaturas-plan, ver server/utils/alcanceCarrera.ts): no tiene
@@ -91,7 +94,8 @@ const opcionesFiltroPlan = computed(() => {
 
 watchEffect(() => {
    if (filtroSemestre.value == null && semestres.value?.length) {
-      filtroSemestre.value = semestres.value.find((s) => s.vigente)?.id ?? semestres.value[0]!.id
+      const visibles = semestres.value.filter(esSemestreSeleccionable)
+      filtroSemestre.value = semestrePorDefecto(visibles)?.id ?? visibles[0]?.id ?? semestres.value[0]!.id
    }
    if (filtroPlan.value == null && opcionesFiltroPlan.value.length) {
       filtroPlan.value = opcionesFiltroPlan.value[0]!.value
@@ -143,6 +147,46 @@ const opcionesCursoCrear = computed(() =>
       .map((c) => ({ label: c.nombre, value: c.id }))
 )
 
+// También se puede elegir una asignatura equivalente a una del plan: el paralelo se crea bajo
+// la asignatura del plan (mismo criterio que /paralelos/asignacion y la carga masiva). El valor
+// de cada opción es "asignaturaPlanId:equivalenteId", porque una misma asignatura del plan puede
+// tener varias equivalentes.
+type OrigenAsignatura = 'malla' | 'equivalentes'
+const origenAsignaturaCrear = ref<OrigenAsignatura>('malla')
+const opcionesOrigenAsignatura = [
+   { label: 'Asignaturas de la malla', value: 'malla' as const },
+   { label: 'Asignaturas equivalentes', value: 'equivalentes' as const },
+]
+const opcionesEquivalenteCrear = computed(() =>
+   [...(asignaturasPlan.value ?? [])]
+      .filter((ap) => ap.planId === formCrear.planId)
+      .sort((a, b) => a.semestre - b.semestre || a.asignatura.nombre.localeCompare(b.asignatura.nombre))
+      .flatMap((ap) =>
+         (ap.equivalentes ?? []).map(({ asignatura: equivalente }) => ({
+            label: `${equivalente.nombre} (${equivalente.codigo}) ≡ ${ap.asignatura.codigo} — Semestre ${ap.semestre}`,
+            value: `${ap.id}:${equivalente.id}`,
+         }))
+      )
+)
+const equivalenteCrear = ref<string>()
+watch([() => formCrear.planId, origenAsignaturaCrear], () => {
+   if (!opcionesEquivalenteCrear.value.some((o) => o.value === equivalenteCrear.value)) {
+      equivalenteCrear.value = opcionesEquivalenteCrear.value[0]?.value
+   }
+})
+// Asignatura del plan bajo la que se crea el paralelo, venga de la malla o de una equivalente.
+const asignaturaPlanIdCrear = computed(() =>
+   origenAsignaturaCrear.value === 'equivalentes'
+      ? Number(equivalenteCrear.value?.split(':')[0] ?? 0)
+      : formCrear.asignaturaPlanId
+)
+// Equivalente elegida, que queda registrada en el paralelo (Paralelo.asignaturaEquivalenteId).
+const asignaturaEquivalenteIdCrear = computed(() =>
+   origenAsignaturaCrear.value === 'equivalentes' && equivalenteCrear.value
+      ? Number(equivalenteCrear.value.split(':')[1])
+      : null
+)
+
 // Si el plan cambia, la asignatura seleccionada podría no pertenecer a él; si el plan o el
 // semestre cambian, el curso seleccionado podría no pertenecer a esa combinación.
 watch(
@@ -182,6 +226,8 @@ function abrirCrear() {
    formCrear.cupo = 0
    formCrear.asignaturaPlanId = opcionesAsignaturaPlanCrear.value[0]?.value ?? 0
    formCrear.cursoId = opcionesCursoCrear.value[0]?.value ?? 0
+   origenAsignaturaCrear.value = 'malla'
+   equivalenteCrear.value = opcionesEquivalenteCrear.value[0]?.value
    errorGuardar.value = null
    modalCrearMostrar.value = true
 }
@@ -194,10 +240,16 @@ async function guardar() {
    guardando.value = true
    errorGuardar.value = null
 
+   if (!asignaturaPlanIdCrear.value) {
+      errorGuardar.value = 'Selecciona una asignatura'
+      guardando.value = false
+      return
+   }
+
    if (
       existeParaleloDuplicado(paralelos.value ?? [], {
          cursoId: formCrear.cursoId,
-         asignaturaCodigo: asignaturaCodigoDe(formCrear.asignaturaPlanId),
+         asignaturaCodigo: asignaturaCodigoDe(asignaturaPlanIdCrear.value),
          codigo: formCrear.codigo,
       })
    ) {
@@ -212,8 +264,9 @@ async function guardar() {
          body: {
             codigo: formCrear.codigo,
             cupo: Number(formCrear.cupo),
-            asignaturaPlanId: Number(formCrear.asignaturaPlanId),
+            asignaturaPlanId: asignaturaPlanIdCrear.value,
             cursoId: Number(formCrear.cursoId),
+            asignaturaEquivalenteId: asignaturaEquivalenteIdCrear.value,
          },
       })
       modalCrearMostrar.value = false
@@ -441,7 +494,15 @@ async function confirmarEliminar() {
                   </p>
                </UFormField>
                <UFormField label="Asignatura" name="asignaturaPlanId">
+                  <URadioGroup
+                     v-model="origenAsignaturaCrear"
+                     :items="opcionesOrigenAsignatura"
+                     value-key="value"
+                     orientation="horizontal"
+                     class="mb-2"
+                  />
                   <USelectMenu
+                     v-if="origenAsignaturaCrear === 'malla'"
                      v-model="formCrear.asignaturaPlanId"
                      :items="opcionesAsignaturaPlanCrear"
                      value-key="value"
@@ -449,6 +510,24 @@ async function confirmarEliminar() {
                      :search-input="{ placeholder: 'Buscar por nombre o código…' }"
                      class="w-full"
                   />
+                  <template v-else>
+                     <USelectMenu
+                        v-model="equivalenteCrear"
+                        :items="opcionesEquivalenteCrear"
+                        value-key="value"
+                        placeholder="Selecciona una asignatura equivalente…"
+                        :search-input="{ placeholder: 'Buscar por nombre o código…' }"
+                        :disabled="!opcionesEquivalenteCrear.length"
+                        class="w-full"
+                     />
+                     <p class="mt-1 text-xs text-usm-text-muted dark:text-slate-400">
+                        {{
+                           opcionesEquivalenteCrear.length
+                              ? 'El paralelo se crea bajo la asignatura del plan indicada después de ≡.'
+                              : 'Ninguna asignatura de este plan tiene equivalentes.'
+                        }}
+                     </p>
+                  </template>
                </UFormField>
                <div class="grid grid-cols-2 gap-4">
                   <UFormField label="Código del Paralelo" name="codigo" :error="errorGuardar ?? undefined">

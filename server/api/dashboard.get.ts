@@ -147,6 +147,7 @@ export default defineEventHandler(async (event) => {
                   codigo: true,
                   color: true,
                   cursoId: true,
+                  asignaturaEquivalente: { select: { codigo: true, nombre: true } },
                   asignaturaPlan: {
                      select: {
                         asignaturaId: true,
@@ -198,11 +199,12 @@ export default defineEventHandler(async (event) => {
                         codigo: true,
                         color: true,
                         cursoId: true,
+                        asignaturaEquivalente: { select: { codigo: true, nombre: true } },
                         asignaturaPlan: {
                            select: {
                               asignaturaId: true,
                               plan: { select: { carreraCodigo: true } },
-                              asignatura: { select: { nombre: true } },
+                              asignatura: { select: { codigo: true, nombre: true } },
                            },
                         },
                      },
@@ -263,6 +265,7 @@ export default defineEventHandler(async (event) => {
                      select: {
                         codigo: true,
                         color: true,
+                        asignaturaEquivalente: { select: { codigo: true, nombre: true } },
                         asignaturaPlan: {
                            select: {
                               asignaturaId: true,
@@ -299,7 +302,9 @@ export default defineEventHandler(async (event) => {
             tipoReserva: { select: { nombre: true, color: true } },
             persona: { select: { nombre: true, apellido: true } },
             paralelo: {
-               select: { asignaturaPlan: { select: { plan: { select: { carrera: { select: { nombreCorto: true } } } } } } },
+               select: {
+                  asignaturaPlan: { select: { plan: { select: { carrera: { select: { nombreCorto: true } } } } } },
+               },
             },
          },
          orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
@@ -472,8 +477,11 @@ export default defineEventHandler(async (event) => {
       no, un paralelo espejo contaría doble su falta de sala o de profesor, y una clase de
       varios bloques contaría una vez por bloque en vez de una sola vez (ver
       contarClasesFisicas). */
-   const { total: clasesTotalesCount, conSala: clasesConSalaCount, conProfesor: clasesConProfesorCount } =
-      contarClasesFisicas(sesiones)
+   const {
+      total: clasesTotalesCount,
+      conSala: clasesConSalaCount,
+      conProfesor: clasesConProfesorCount,
+   } = contarClasesFisicas(sesiones)
 
    // Horas cubiertas por paralelo: una asignatura pide N bloques de teoría y M de práctica.
    const sesionesPorParalelo = new Map<
@@ -639,8 +647,8 @@ export default defineEventHandler(async (event) => {
                inicio,
                fin: aHora(reserva.fin),
                salaCodigo: reserva.salaCodigo,
-               asignaturaCodigo: paralelo.asignaturaPlan.asignatura.codigo,
-               asignaturaNombre: paralelo.asignaturaPlan.asignatura.nombre,
+               asignaturaCodigo: asignaturaVisibleParalelo(paralelo).codigo,
+               asignaturaNombre: asignaturaVisibleParalelo(paralelo).nombre,
                paraleloCodigo: paralelo.codigo,
                carrera: paralelo.asignaturaPlan.plan.carrera.nombre,
                carreraCorta: paralelo.asignaturaPlan.plan.carrera.nombreCorto,
@@ -692,8 +700,8 @@ export default defineEventHandler(async (event) => {
          agendaBruta.push({
             inicio: aHora(reserva.inicio),
             fin: aHora(reserva.fin),
-            titulo: paralelo?.asignaturaPlan.asignatura.nombre ?? reserva.titulo,
-            detalle: paralelo ? reserva.titulo : reserva.tipoReserva.nombre,
+            titulo: paralelo ? asignaturaVisibleParalelo(paralelo).nombre : reserva.titulo,
+            detalle: paralelo ? tituloReservaSesion(paralelo) : reserva.tipoReserva.nombre,
             salaCodigo: reserva.salaCodigo,
             color: paralelo?.color ?? reserva.tipoReserva.color,
             esClase: !!paralelo,
@@ -721,8 +729,8 @@ export default defineEventHandler(async (event) => {
                agendaBruta.push({
                   inicio: aHora(bloque.inicio),
                   fin: aHora(bloque.fin),
-                  titulo: sesion.paralelo.asignaturaPlan.asignatura.nombre,
-                  detalle: `${sesion.paralelo.asignaturaPlan.asignatura.codigo} · ${sesion.paralelo.codigo}`,
+                  titulo: asignaturaVisibleParalelo(sesion.paralelo).nombre,
+                  detalle: tituloReservaSesion(sesion.paralelo),
                   salaCodigo: null,
                   color: sesion.paralelo.color,
                   esClase: true,

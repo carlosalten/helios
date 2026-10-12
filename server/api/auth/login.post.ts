@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
-import type { PermisoResumen } from '~/types/permiso'
+import { codificarPermisosSesion, type PermisoResumen } from '~/types/permiso'
 
 // Login consolidado: verifica credenciales contra Persona (la misma tabla que la agenda
 // académica) y crea la sesión Nuxt en un solo paso. Sin secreto interno ni llamadas entre
@@ -124,13 +124,15 @@ export default defineEventHandler(async (event) => {
          rol,
          jerarquiaRol: persona.rol.jerarquia,
          puedeSuspenderCualquierReserva: persona.rol.suspenderCualquierReserva,
+         puedeVerSemestreBorrador: persona.rol.verSemestreBorrador,
          personaId: persona.id,
-         permisos,
+         permisos: codificarPermisosSesion(permisos),
          carrerasJefe,
          carrerasAsignadas,
          temaPreferido: persona.temaPreferido,
          mostrarTopesEspejo: persona.mostrarTopesEspejo,
          colorTopesEspejo: persona.colorTopesEspejo,
+         semestrePorDefecto: persona.semestrePorDefecto,
          emoji: persona.emoji,
       },
    })

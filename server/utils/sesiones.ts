@@ -5,6 +5,8 @@ export const incluirSesion = {
    paralelo: {
       include: {
          asignaturaPlan: { include: { asignatura: true, plan: { include: { carrera: true } } } },
+         // Para mostrar la equivalente desde la que se programó (ver asignaturaVisibleParalelo).
+         asignaturaEquivalente: true,
          curso: true,
       },
    },

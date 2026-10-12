@@ -26,15 +26,21 @@ const {
 const { tieneAlcanceSobreCarrera, puedeVerCarrera } = useAlcanceCarrera()
 
 const { data: semestres } = await useFetch<Semestre[]>('/api/semestres')
+const { esSemestreSeleccionable, semestrePorDefecto } = useVisibilidadSemestre()
 
-/* ── Semestre que se está editando: por defecto el vigente, pero se puede cambiar ── */
+/* ── Semestre que se está editando: por defecto el preferido (vigente o borrador), pero se puede cambiar ── */
 const semestreSeleccionadoId = ref<number>()
 watchEffect(() => {
    if (semestreSeleccionadoId.value == null && semestres.value?.length) {
-      semestreSeleccionadoId.value = semestres.value.find((s) => s.vigente)?.id ?? semestres.value[0]!.id
+      const visibles = semestres.value.filter(esSemestreSeleccionable)
+      semestreSeleccionadoId.value = semestrePorDefecto(visibles)?.id ?? visibles[0]?.id ?? semestres.value[0]!.id
    }
 })
-const opcionesSemestre = computed(() => (semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })))
+const opcionesSemestre = computed(() =>
+   (semestres.value ?? [])
+      .filter((s) => esSemestreSeleccionable(s) || s.id === semestreSeleccionadoId.value)
+      .map((s) => ({ label: s.nombre, value: s.id }))
+)
 const semestreSeleccionado = computed(
    () => (semestres.value ?? []).find((s) => s.id === semestreSeleccionadoId.value) ?? null
 )
@@ -1032,7 +1038,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                                     >
                                        <div class="flex items-center justify-between gap-1">
                                           <span class="font-semibold text-usm-text dark:text-white">
-                                             {{ sesion.paralelo.asignaturaPlan.asignatura.codigo }} ·
+                                             {{ asignaturaVisible(sesion.paralelo).codigo }} ·
                                              {{ sesion.paralelo.codigo }}
                                           </span>
                                           <div class="flex items-center gap-1">
@@ -1053,7 +1059,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                                              </button>
                                           </div>
                                        </div>
-                                       <div>{{ sesion.paralelo.asignaturaPlan.asignatura.nombre }}</div>
+                                       <div>{{ asignaturaVisible(sesion.paralelo).nombre }}</div>
                                        <div class="mt-1 flex items-center gap-1">
                                           <UPopover v-if="conflictosSala(sesion).length" class="min-w-0 flex-1">
                                              <div
@@ -1086,7 +1092,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                                                          {{ conflicto.paralelo.asignaturaPlan.plan.carrera.nombre }}
                                                       </p>
                                                       <p class="text-usm-text-muted dark:text-slate-400">
-                                                         {{ conflicto.paralelo.asignaturaPlan.asignatura.nombre }} ·
+                                                         {{ asignaturaVisible(conflicto.paralelo).nombre }} ·
                                                          {{ conflicto.paralelo.curso.nombre }} · Paralelo
                                                          {{ conflicto.paralelo.codigo }}
                                                       </p>
@@ -1168,7 +1174,7 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                                                          {{ conflicto.paralelo.asignaturaPlan.plan.carrera.nombre }}
                                                       </p>
                                                       <p class="text-usm-text-muted dark:text-slate-400">
-                                                         {{ conflicto.paralelo.asignaturaPlan.asignatura.nombre }} ·
+                                                         {{ asignaturaVisible(conflicto.paralelo).nombre }} ·
                                                          {{ conflicto.paralelo.curso.nombre }} · Paralelo
                                                          {{ conflicto.paralelo.codigo }}
                                                       </p>
@@ -1247,10 +1253,10 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                               <div class="mb-2 flex items-start justify-between gap-2">
                                  <div class="min-w-0">
                                     <p class="text-sm font-medium text-usm-text dark:text-white">
-                                       {{ paralelo.asignaturaPlan.asignatura.nombre }}
+                                       {{ asignaturaVisible(paralelo).nombre }}
                                     </p>
                                     <p class="text-xs text-usm-text-muted dark:text-slate-400">
-                                       {{ paralelo.asignaturaPlan.asignatura.codigo }} · Paralelo
+                                       {{ asignaturaVisible(paralelo).codigo }} · Paralelo
                                        <UTooltip :text="puedeEditarHorario ? 'Editar código' : paralelo.codigo">
                                           <button
                                              type="button"
@@ -1428,8 +1434,8 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                         </div>
                         <template v-else>
                            <p class="mb-2 truncate text-xs font-medium text-usm-text dark:text-white">
-                              {{ sesionSeleccionada.paralelo.asignaturaPlan.asignatura.codigo }} ·
-                              {{ sesionSeleccionada.paralelo.asignaturaPlan.asignatura.nombre }}
+                              {{ asignaturaVisible(sesionSeleccionada.paralelo).codigo }} ·
+                              {{ asignaturaVisible(sesionSeleccionada.paralelo).nombre }}
                            </p>
                            <div v-if="cargandoHistorial" class="text-sm text-usm-text-muted dark:text-slate-400">
                               Cargando…
@@ -1605,11 +1611,12 @@ async function elegirColorParalelo(paralelo: Paralelo, color: string | null) {
                               class="leading-tight not-last:mb-1 not-last:border-b not-last:border-dashed not-last:border-[#d4d4d4] not-last:pb-1"
                            >
                               <p class="truncate font-semibold text-black">
-                                 {{ sesion.paralelo.asignaturaPlan.asignatura.codigo }} ·
-                                 {{ sesion.paralelo.codigo }} ({{ sesion.tipo === 'TEORIA' ? 'T' : 'P' }})
+                                 {{ asignaturaVisible(sesion.paralelo).codigo }} · {{ sesion.paralelo.codigo }} ({{
+                                    sesion.tipo === 'TEORIA' ? 'T' : 'P'
+                                 }})
                               </p>
                               <p class="truncate text-gray-700">
-                                 {{ sesion.paralelo.asignaturaPlan.asignatura.nombre }}
+                                 {{ asignaturaVisible(sesion.paralelo).nombre }}
                               </p>
                               <p class="truncate text-gray-700">{{ sesion.sala?.codigo ?? 'Sin sala' }}</p>
                               <p class="truncate text-gray-700">

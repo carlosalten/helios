@@ -119,13 +119,18 @@ const itemsCarrera = computed(() =>
       .sort((a, b) => a.label.localeCompare(b.label))
 )
 
+// Las asignaturas de la cascada son las que se MUESTRAN (asignaturaVisible): un paralelo
+// programado desde una equivalente aparece bajo la equivalente, con su nombre, y así queda en el
+// `subtitulo` de la ayudantía.
+type AsignaturaCascada = { id: number; codigo: string; nombre: string; nombreCorto: string | null }
+
 function asignaturasDeCarrera(carreraCodigo: number | undefined) {
    if (carreraCodigo == null) return []
-   const vistas = new Map<number, Paralelo['asignaturaPlan']['asignatura']>()
+   const vistas = new Map<number, AsignaturaCascada>()
    for (const p of paralelosSemestre.value) {
       if (p.asignaturaPlan.plan.carreraCodigo !== carreraCodigo) continue
-      if (!vistas.has(p.asignaturaPlan.asignaturaId))
-         vistas.set(p.asignaturaPlan.asignaturaId, p.asignaturaPlan.asignatura)
+      const asignatura = asignaturaVisible(p)
+      if (!vistas.has(asignatura.id)) vistas.set(asignatura.id, asignatura)
    }
    return Array.from(vistas.values()).sort((a, b) => a.codigo.localeCompare(b.codigo))
 }
@@ -133,9 +138,7 @@ function asignaturasDeCarrera(carreraCodigo: number | undefined) {
 function paralelosDeAsignatura(carreraCodigo: number | undefined, asignaturaId: number | undefined) {
    if (carreraCodigo == null || asignaturaId == null) return []
    return paralelosSemestre.value
-      .filter(
-         (p) => p.asignaturaPlan.plan.carreraCodigo === carreraCodigo && p.asignaturaPlan.asignaturaId === asignaturaId
-      )
+      .filter((p) => p.asignaturaPlan.plan.carreraCodigo === carreraCodigo && asignaturaVisible(p).id === asignaturaId)
       .sort((a, b) => a.codigo.localeCompare(b.codigo))
 }
 
@@ -302,6 +305,8 @@ function bloqueNumeroDe(horaISO: string) {
 // mismo paralelo en una sola tarjeta que abarca desde el inicio del primero hasta el fin del
 // último, para no mostrar una clase de 3 horas como 3 cuadros separados. Solo aplica a
 // reservas de clase (`sesionParalelo`): Ayudantías y demás tipos de reserva pasan tal cual.
+// No se fusionan bloques con distinto profesor (`personaId`, el responsable de la reserva):
+// la tarjeta muestra uno solo y se perdería quién dicta el resto.
 function fusionarClasesContiguas(reservasDia: Reserva[]): Reserva[] {
    const porParalelo = new Map<number, Reserva[]>()
    const resto: Reserva[] = []
@@ -325,7 +330,7 @@ function fusionarClasesContiguas(reservasDia: Reserva[]): Reserva[] {
          const bloqueActual = bloqueNumeroDe(r.inicio)
          const esContiguo =
             actual && bloqueAnterior != null && bloqueActual != null && bloqueActual === bloqueAnterior + 1
-         if (esContiguo && actual!.suspendida === r.suspendida) {
+         if (esContiguo && actual!.suspendida === r.suspendida && actual!.personaId === r.personaId) {
             actual = { ...actual!, fin: r.fin }
          } else {
             if (actual) fusionadas.push(actual)
@@ -463,7 +468,7 @@ function textoBadgeTipo(reserva: Reserva) {
 // `nombreAsignaturaDe` en reservas/horario.vue (nombre corto si tiene uno definido, si no el
 // completo). Para una Ayudantía, el nombre de la asignatura ya viene en `subtitulo`.
 function nombreAsignaturaDe(reserva: Reserva) {
-   const asignatura = reserva.sesionParalelo?.paralelo.asignaturaPlan.asignatura
+   const asignatura = reserva.sesionParalelo ? asignaturaVisible(reserva.sesionParalelo.paralelo) : null
    return asignatura ? (asignatura.nombreCorto ?? asignatura.nombre) : null
 }
 // Carrera de la reserva: de la clase si es una sesión de paralelo, del paralelo si es una

@@ -18,5 +18,11 @@ export default defineEventHandler(async (event) => {
 
    await prisma.persona.update({ where: { email }, data: parsed.data })
 
+   // Los selectores de semestre leen esta preferencia desde la sesión: se refleja al tiro, sin
+   // esperar a un nuevo login.
+   if (parsed.data.semestrePorDefecto) {
+      await setUserSession(event, { user: { ...user, semestrePorDefecto: parsed.data.semestrePorDefecto } })
+   }
+
    return { ok: true }
 })

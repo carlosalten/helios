@@ -26,7 +26,15 @@ const [
 ])
 
 /* ── Plan seleccionado ───────────────────────────────────── */
-const planSeleccionadoId = ref<number | undefined>(undefined)
+// Un Jefe de Carrera parte con el plan de la carrera que dirige (el vigente, si tiene uno)
+// en vez de tener que elegirlo; el resto de los roles parte sin plan.
+const { user } = useUserSession()
+function planPorDefecto() {
+   const carrerasJefe = user.value?.carrerasJefe ?? []
+   const propios = (planes.value ?? []).filter((p) => carrerasJefe.includes(p.carreraCodigo))
+   return (propios.find((p) => p.vigente) ?? propios[0])?.id
+}
+const planSeleccionadoId = ref<number | undefined>(planPorDefecto())
 const planSeleccionado = computed(() => (planes.value ?? []).find((p) => p.id === planSeleccionadoId.value) ?? null)
 
 // Se puede VER la malla y los cursos de cualquier plan (/api/planes y
@@ -47,17 +55,24 @@ function labelPlan(plan: Plan) {
 const opcionesPlan = computed(() => (planes.value ?? []).map((p) => ({ label: labelPlan(p), value: p.id })))
 
 /* ── Semestre seleccionado: acota qué cursos del plan se muestran ────────── */
+const { esSemestreSeleccionable, semestrePorDefecto } = useVisibilidadSemestre()
 const semestreSeleccionadoId = ref<number | undefined>(undefined)
 watchEffect(() => {
    if (semestreSeleccionadoId.value == null && semestres.value?.length) {
-      semestreSeleccionadoId.value = semestres.value.find((s) => s.vigente)?.id ?? semestres.value[0]!.id
+      semestreSeleccionadoId.value = semestrePorDefecto(semestres.value)?.id ?? semestres.value[0]!.id
    }
 })
-const opcionesSemestre = computed(() => (semestres.value ?? []).map((s) => ({ label: s.nombre, value: s.id })))
+const opcionesSemestre = computed(() =>
+   (semestres.value ?? [])
+      .filter((s) => esSemestreSeleccionable(s) || s.id === semestreSeleccionadoId.value)
+      .map((s) => ({ label: s.nombre, value: s.id }))
+)
 
 /* ── Malla: asignaturas del plan agrupadas por semestre ─────────────────── */
 const asignaturas = ref<AsignaturaConAsignacion[]>([])
-const cargandoAsignaturas = ref(false)
+// Arranca en `true` si ya hay un plan por defecto: así el primer render (servidor y cliente)
+// muestra el skeleton y no "el plan no tiene asignaturas" mientras se cargan.
+const cargandoAsignaturas = ref(planSeleccionadoId.value != null)
 
 async function cargarAsignaturas() {
    if (!planSeleccionado.value) return
@@ -65,23 +80,31 @@ async function cargarAsignaturas() {
    asignaturas.value = await $fetch<AsignaturaConAsignacion[]>(url)
 }
 
-watch(planSeleccionadoId, async () => {
+async function recargarMalla() {
    asignaturas.value = []
-   if (!planSeleccionado.value) return
+   if (!planSeleccionado.value) {
+      cargandoAsignaturas.value = false
+      return
+   }
    cargandoAsignaturas.value = true
    try {
       await cargarAsignaturas()
    } finally {
       cargandoAsignaturas.value = false
    }
+}
+
+watch(planSeleccionadoId, recargarMalla)
+// El plan por defecto queda puesto antes de que exista el watch, así que su malla se carga acá.
+onMounted(() => {
+   if (planSeleccionadoId.value != null) recargarMalla()
 })
 
 const asignaturasAsignadas = computed(() => asignaturas.value.filter((a) => a.asignado))
 
-// Las electivas no viven en la columna de su `semestre` (ese valor es solo un relleno sin
-// significado — ver AsignaturaPlan.esElectiva): van en su propia columna al final de la malla,
-// igual que en /planes/asignacion.
-const columnas = computed(() => {
+// Las electivas no viven en la fila de su `semestre` (ese valor es solo un relleno sin
+// significado — ver AsignaturaPlan.esElectiva): van en su propia fila al final de la malla.
+const semestresMalla = computed(() => {
    if (!planSeleccionado.value) return []
    const maxAsignado = asignaturasAsignadas.value.reduce(
       (max, a) => (!a.esElectiva ? Math.max(max, a.semestre) : max),
@@ -93,11 +116,49 @@ const columnas = computed(() => {
 
 const electivas = computed(() => asignaturasAsignadas.value.filter((a) => a.esElectiva))
 
-// Columna de Electivos, cuando el plan la tiene habilitada, al final de la misma grilla.
-const totalColumnasMalla = computed(() => columnas.value.length + (planSeleccionado.value?.tieneElectivos ? 1 : 0))
-
 function asignaturasDeSemestre(semestre: number) {
    return asignaturasAsignadas.value.filter((a) => !a.esElectiva && a.semestre === semestre)
+}
+
+/* ── Vista de la malla: asignaturas del plan o sus equivalentes ─────────── */
+type VistaMalla = 'malla' | 'equivalentes'
+const vistaMalla = ref<VistaMalla>('malla')
+const opcionesVistaMalla = [
+   { label: 'Asignaturas de la malla', value: 'malla' as const },
+   { label: 'Asignaturas equivalentes', value: 'equivalentes' as const },
+]
+
+// Una ficha arrastrable de la malla. En la vista de equivalentes muestra la equivalente, pero
+// arrastra la asignatura del plan: el paralelo se crea bajo esa (mismo criterio que la carga
+// masiva, ver server/utils/cargaMasiva.ts), así que toda la lógica de arrastre sigue igual.
+interface FichaMalla {
+   clave: string
+   nombre: string
+   codigo: string
+   asignatura: AsignaturaConAsignacion
+   // Id de la equivalente que muestra la ficha; null en la vista de malla. Se guarda en el
+   // paralelo creado (Paralelo.asignaturaEquivalenteId).
+   equivalenteId: number | null
+}
+function fichasDe(lista: AsignaturaConAsignacion[]): FichaMalla[] {
+   if (vistaMalla.value === 'malla') {
+      return lista.map((a) => ({
+         clave: `a-${a.id}`,
+         nombre: a.nombre,
+         codigo: a.codigo,
+         asignatura: a,
+         equivalenteId: null,
+      }))
+   }
+   return lista.flatMap((a) =>
+      a.equivalentes.map((e) => ({
+         clave: `e-${a.id}-${e.id}`,
+         nombre: e.nombre,
+         codigo: e.codigo,
+         asignatura: a,
+         equivalenteId: e.id,
+      }))
+   )
 }
 
 // Cuántos paralelos ya existen para esta asignatura dentro del plan seleccionado.
@@ -186,6 +247,61 @@ function paralelosDeCurso(cursoId: number) {
    return (paralelosTodos.value ?? []).filter((p) => p.cursoId === cursoId)
 }
 
+// Paralelos de la asignatura en los cursos que se están mostrando (plan + semestre
+// seleccionados). En la vista de equivalentes, la ficha de una equivalente cuya asignatura del
+// plan ya está asignada a alguno de esos cursos lleva un ✓ en su badge.
+const idsCursosDelPlan = computed(() => new Set(cursosDelPlan.value.map((c) => c.id)))
+function paralelosEnCursosDelPlan(asignatura: AsignaturaConAsignacion) {
+   if (asignatura.asignaturaPlanId === null) return 0
+   return (paralelosTodos.value ?? []).filter(
+      (p) => p.asignaturaPlanId === asignatura.asignaturaPlanId && idsCursosDelPlan.value.has(p.cursoId)
+   ).length
+}
+function equivalenteAsignada(ficha: FichaMalla) {
+   return vistaMalla.value === 'equivalentes' && paralelosEnCursosDelPlan(ficha.asignatura) > 0
+}
+function textoEquivalente(ficha: FichaMalla) {
+   const base = `Equivalente a ${ficha.asignatura.nombre}: el paralelo se crea bajo esa asignatura del plan`
+   const cantidad = paralelosEnCursosDelPlan(ficha.asignatura)
+   return cantidad ? `${base}. Ya asignada: ${cantidad} paralelo(s) en los cursos mostrados.` : base
+}
+
+// Un paralelo es "de una equivalente" si se creó desde una (Paralelo.asignaturaEquivalente) o
+// si el código de su asignatura no está asignado al plan (no es de la malla). Esos se destacan
+// en su curso. Mientras la malla carga, el segundo criterio no aplica, para no pintar todo por
+// un instante.
+const codigosMalla = computed(() => new Set(asignaturasAsignadas.value.map((a) => a.codigo)))
+function esFueraDeMalla(paralelo: Paralelo) {
+   return codigosMalla.value.size > 0 && !codigosMalla.value.has(paralelo.asignaturaPlan.asignatura.codigo)
+}
+function esDeEquivalente(paralelo: Paralelo) {
+   return paralelo.asignaturaEquivalente !== null || esFueraDeMalla(paralelo)
+}
+// Asignatura que se muestra en la ficha: la equivalente desde la que se programó, si hay una.
+function asignaturaMostrada(paralelo: Paralelo) {
+   return paralelo.asignaturaEquivalente ?? paralelo.asignaturaPlan.asignatura
+}
+// Asignatura de la malla a la que equivale la de un paralelo fuera de la malla, si alguna.
+function asignaturaMallaEquivalente(paralelo: Paralelo) {
+   const codigo = paralelo.asignaturaPlan.asignatura.codigo
+   return asignaturasAsignadas.value.find((a) => a.equivalentes.some((e) => e.codigo === codigo)) ?? null
+}
+function etiquetaEquivalenteParalelo(paralelo: Paralelo) {
+   if (paralelo.asignaturaEquivalente) return `≡ ${paralelo.asignaturaPlan.asignatura.codigo}`
+   const equivalente = asignaturaMallaEquivalente(paralelo)
+   return equivalente ? `≡ ${equivalente.codigo}` : 'Fuera de la malla'
+}
+function textoEquivalenteParalelo(paralelo: Paralelo) {
+   const delPlan = paralelo.asignaturaPlan.asignatura
+   if (paralelo.asignaturaEquivalente) {
+      return `Asignatura equivalente a ${delPlan.codigo} ${delPlan.nombre} (de la malla)`
+   }
+   const equivalente = asignaturaMallaEquivalente(paralelo)
+   return equivalente
+      ? `No está asignada al plan: es equivalente a ${equivalente.codigo} ${equivalente.nombre}`
+      : 'La asignatura no está asignada al plan'
+}
+
 // El paralelo quedó en un curso cuyo semestre curricular no coincide con el semestre-en-
 // plan de su asignatura (se pudo crear igual desde el modal de advertencia). Una asignatura
 // electiva se puede dictar en un curso de cualquier semestre, así que nunca cuenta como
@@ -197,28 +313,32 @@ function esFueraDeSemestre(paralelo: Paralelo, curso: Curso) {
 /* ── Drag and drop: arrastra una asignatura de la malla a un panel de curso
    para crear un paralelo. El código del paralelo es el número del curso. ── */
 const arrastrando = ref<AsignaturaConAsignacion | null>(null)
+// Equivalente de la ficha que se arrastra (null si es una asignatura de la malla).
+const arrastrandoEquivalenteId = ref<number | null>(null)
 const creando = ref<number | null>(null)
 
 function puedeArrastrar(asignatura: AsignaturaConAsignacion) {
    return puedeCrearParalelo.value && asignatura.asignaturaPlanId !== null
 }
 
-function iniciarArrastre(e: DragEvent, asignatura: AsignaturaConAsignacion) {
+function iniciarArrastre(e: DragEvent, asignatura: AsignaturaConAsignacion, equivalenteId: number | null) {
    if (!puedeArrastrar(asignatura)) return
    arrastrando.value = asignatura
+   arrastrandoEquivalenteId.value = equivalenteId
    e.dataTransfer?.setData('text/plain', String(asignatura.id))
    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'
 }
 
 function terminarArrastre() {
    arrastrando.value = null
+   arrastrandoEquivalenteId.value = null
 }
 
 function permiteDrop() {
    return arrastrando.value !== null && creando.value === null
 }
 
-async function crearParalelo(asignatura: AsignaturaConAsignacion, curso: Curso) {
+async function crearParalelo(asignatura: AsignaturaConAsignacion, curso: Curso, equivalenteId: number | null) {
    if (!asignatura.asignaturaPlanId) return
 
    if (
@@ -245,6 +365,7 @@ async function crearParalelo(asignatura: AsignaturaConAsignacion, curso: Curso) 
             cupo: 0,
             asignaturaPlanId: asignatura.asignaturaPlanId,
             cursoId: curso.id,
+            asignaturaEquivalenteId: equivalenteId,
          },
       })
       await refrescarParalelos()
@@ -259,29 +380,31 @@ async function crearParalelo(asignatura: AsignaturaConAsignacion, curso: Curso) 
 // Si el semestre-en-plan de la asignatura no coincide con el numeroSemestre del curso,
 // se advierte antes de crear (el usuario puede confirmar igual: no es un bloqueo duro).
 const modalAdvertenciaMostrar = ref(false)
-const pendiente = ref<{ asignatura: AsignaturaConAsignacion; curso: Curso } | null>(null)
+const pendiente = ref<{ asignatura: AsignaturaConAsignacion; curso: Curso; equivalenteId: number | null } | null>(null)
 
 async function onDrop(e: DragEvent, curso: Curso) {
    if (!permiteDrop()) return
    e.preventDefault()
    const asignatura = arrastrando.value
+   const equivalenteId = arrastrandoEquivalenteId.value
    arrastrando.value = null
+   arrastrandoEquivalenteId.value = null
    if (!asignatura?.asignaturaPlanId) return
 
    if (!asignatura.esElectiva && asignatura.semestre !== curso.numeroSemestre) {
-      pendiente.value = { asignatura, curso }
+      pendiente.value = { asignatura, curso, equivalenteId }
       modalAdvertenciaMostrar.value = true
       return
    }
 
-   await crearParalelo(asignatura, curso)
+   await crearParalelo(asignatura, curso, equivalenteId)
 }
 
 async function confirmarCreacionConAdvertencia() {
    if (!pendiente.value) return
-   const { asignatura, curso } = pendiente.value
+   const { asignatura, curso, equivalenteId } = pendiente.value
    modalAdvertenciaMostrar.value = false
-   await crearParalelo(asignatura, curso)
+   await crearParalelo(asignatura, curso, equivalenteId)
 }
 
 /* ── Borrar paralelo: botón en la ficha o arrastrarlo de vuelta a la malla ── */
@@ -606,10 +729,20 @@ async function guardarCupo(paralelo: Paralelo) {
          message="Selecciona un plan para ver su malla y crear paralelos"
       />
 
-      <template v-else>
-         <!-- Malla: asignaturas del plan por semestre -->
-         <div class="space-y-3">
-            <h3 class="font-semibold text-usm-text dark:text-white">Malla curricular</h3>
+      <div v-else class="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+         <!-- Malla: una fila por semestre del plan. En escritorio queda fija mientras se recorren
+            los cursos, para poder arrastrar a cualquiera sin perderla de vista. -->
+         <div class="min-w-0 space-y-3 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+               <h3 class="font-semibold text-usm-text dark:text-white">Malla curricular</h3>
+               <USelect
+                  v-model="vistaMalla"
+                  :items="opcionesVistaMalla"
+                  value-key="value"
+                  size="sm"
+                  class="w-full sm:w-56"
+               />
+            </div>
 
             <TableSkeleton v-if="cargandoAsignaturas" :rows="5" />
 
@@ -621,56 +754,62 @@ async function guardarCupo(paralelo: Paralelo) {
 
             <div
                v-else
-               class="grid grid-flow-col auto-cols-47.5 gap-3 overflow-x-auto pb-2 transition-colors duration-150 lg:grid-flow-row lg:auto-cols-auto lg:overflow-x-visible lg:pb-0 lg:grid-cols-[repeat(var(--cols),minmax(0,1fr))]"
+               class="space-y-3 transition-colors duration-150"
                :class="permiteDropParalelo() ? 'outline-2 -outline-offset-2 outline-usm-red/40 rounded-2xl' : ''"
-               :style="{ '--cols': totalColumnasMalla }"
                @dragover="onDragOverMalla"
                @drop="onDropMalla"
             >
                <div
-                  v-for="semestre in columnas"
+                  v-for="semestre in semestresMalla"
                   :key="semestre"
-                  class="flex min-w-0 flex-col rounded-2xl border border-default bg-muted/40 p-2"
+                  class="rounded-2xl border border-default bg-muted/40 p-2"
                >
                   <p class="mb-2 px-1 text-xs font-semibold text-usm-text-muted dark:text-slate-400">
                      Semestre {{ semestre }}
                   </p>
-                  <!-- Alto fijo para 6 asignaturas (6 fichas de 50px + 5 gaps de 8px = 21.25rem);
-                     con más, la columna scrollea en vez de seguir creciendo. -->
-                  <div class="min-h-20 max-h-85 flex-1 space-y-2 overflow-y-auto">
-                     <p
-                        v-if="!asignaturasDeSemestre(semestre).length"
-                        class="py-6 text-center text-[11px] text-usm-text-muted/60 dark:text-slate-500"
-                     >
-                        Sin asignaturas
-                     </p>
+                  <p
+                     v-if="!fichasDe(asignaturasDeSemestre(semestre)).length"
+                     class="py-2 text-center text-[11px] text-usm-text-muted/60 dark:text-slate-500"
+                  >
+                     {{ vistaMalla === 'malla' ? 'Sin asignaturas' : 'Sin equivalentes' }}
+                  </p>
+                  <div v-else class="grid grid-cols-2 gap-2">
                      <div
-                        v-for="asignatura in asignaturasDeSemestre(semestre)"
-                        :key="asignatura.id"
-                        :draggable="puedeArrastrar(asignatura)"
-                        class="rounded-lg border border-default bg-default p-2 text-xs shadow-sm transition-opacity"
+                        v-for="ficha in fichasDe(asignaturasDeSemestre(semestre))"
+                        :key="ficha.clave"
+                        :draggable="puedeArrastrar(ficha.asignatura)"
+                        class="min-w-0 rounded-lg border border-default bg-default p-2 text-xs shadow-sm transition-opacity"
                         :class="[
-                           puedeArrastrar(asignatura)
+                           puedeArrastrar(ficha.asignatura)
                               ? 'cursor-grab active:cursor-grabbing'
                               : 'cursor-not-allowed opacity-60',
-                           creando === asignatura.asignaturaPlanId ? 'pointer-events-none opacity-50' : '',
+                           creando === ficha.asignatura.asignaturaPlanId ? 'pointer-events-none opacity-50' : '',
                         ]"
-                        @dragstart="iniciarArrastre($event, asignatura)"
+                        @dragstart="iniciarArrastre($event, ficha.asignatura, ficha.equivalenteId)"
                         @dragend="terminarArrastre"
                      >
-                        <UTooltip :text="asignatura.nombre">
-                           <p class="truncate font-medium text-usm-text dark:text-white">{{ asignatura.nombre }}</p>
+                        <UTooltip :text="ficha.nombre">
+                           <p class="truncate font-medium text-usm-text dark:text-white">{{ ficha.nombre }}</p>
                         </UTooltip>
                         <div class="flex items-center justify-between gap-1">
-                           <p class="truncate text-usm-text-muted dark:text-slate-400">{{ asignatura.codigo }}</p>
-                           <UTooltip :text="`${paralelosDeAsignatura(asignatura)} paralelo(s) creado(s)`">
+                           <p class="truncate text-usm-text-muted dark:text-slate-400">{{ ficha.codigo }}</p>
+                           <UTooltip
+                              v-if="vistaMalla === 'malla'"
+                              :text="`${paralelosDeAsignatura(ficha.asignatura)} paralelo(s) creado(s)`"
+                           >
                               <UBadge
                                  size="xs"
                                  variant="subtle"
-                                 :color="paralelosDeAsignatura(asignatura) > 0 ? 'info' : 'neutral'"
+                                 :color="paralelosDeAsignatura(ficha.asignatura) > 0 ? 'info' : 'neutral'"
                               >
                                  <UIcon name="i-lucide-copy" class="size-3" />
-                                 {{ paralelosDeAsignatura(asignatura) }}
+                                 {{ paralelosDeAsignatura(ficha.asignatura) }}
+                              </UBadge>
+                           </UTooltip>
+                           <UTooltip v-else :text="textoEquivalente(ficha)">
+                              <UBadge size="xs" variant="subtle" color="secondary" class="shrink-0">
+                                 <UIcon v-if="equivalenteAsignada(ficha)" name="i-lucide-check" class="size-3" />
+                                 ≡ {{ ficha.asignatura.codigo }}
                               </UBadge>
                            </UTooltip>
                         </div>
@@ -678,49 +817,56 @@ async function guardarCupo(paralelo: Paralelo) {
                   </div>
                </div>
 
-               <!-- Columna de Electivos: solo si el plan la tiene habilitada. Una asignatura
+               <!-- Fila de Electivos: solo si el plan la tiene habilitada. Una asignatura
                   aquí se puede arrastrar a un curso de cualquier semestre (ver esFueraDeSemestre). -->
                <div
                   v-if="planSeleccionado.tieneElectivos"
-                  class="flex min-w-0 flex-col rounded-2xl border border-usm-purple-200 bg-usm-purple-50/40 p-2 dark:border-usm-purple-900 dark:bg-usm-purple-950/20"
+                  class="rounded-2xl border border-usm-purple-200 bg-usm-purple-50/40 p-2 dark:border-usm-purple-900 dark:bg-usm-purple-950/20"
                >
                   <p class="mb-2 px-1 text-xs font-semibold text-usm-purple-700 dark:text-usm-purple-300">Electivos</p>
-                  <!-- Alto fijo para 6 asignaturas (6 fichas de 50px + 5 gaps de 8px = 21.25rem);
-                     con más, la columna scrollea en vez de seguir creciendo. -->
-                  <div class="min-h-20 max-h-85 flex-1 space-y-2 overflow-y-auto">
-                     <p
-                        v-if="!electivas.length"
-                        class="py-6 text-center text-[11px] text-usm-text-muted/60 dark:text-slate-500"
-                     >
-                        Sin electivos
-                     </p>
+                  <p
+                     v-if="!fichasDe(electivas).length"
+                     class="py-2 text-center text-[11px] text-usm-text-muted/60 dark:text-slate-500"
+                  >
+                     {{ vistaMalla === 'malla' ? 'Sin electivos' : 'Sin equivalentes' }}
+                  </p>
+                  <div v-else class="grid grid-cols-2 gap-2">
                      <div
-                        v-for="asignatura in electivas"
-                        :key="asignatura.id"
-                        :draggable="puedeArrastrar(asignatura)"
-                        class="rounded-lg border border-default bg-default p-2 text-xs shadow-sm transition-opacity"
+                        v-for="ficha in fichasDe(electivas)"
+                        :key="ficha.clave"
+                        :draggable="puedeArrastrar(ficha.asignatura)"
+                        class="min-w-0 rounded-lg border border-default bg-default p-2 text-xs shadow-sm transition-opacity"
                         :class="[
-                           puedeArrastrar(asignatura)
+                           puedeArrastrar(ficha.asignatura)
                               ? 'cursor-grab active:cursor-grabbing'
                               : 'cursor-not-allowed opacity-60',
-                           creando === asignatura.asignaturaPlanId ? 'pointer-events-none opacity-50' : '',
+                           creando === ficha.asignatura.asignaturaPlanId ? 'pointer-events-none opacity-50' : '',
                         ]"
-                        @dragstart="iniciarArrastre($event, asignatura)"
+                        @dragstart="iniciarArrastre($event, ficha.asignatura, ficha.equivalenteId)"
                         @dragend="terminarArrastre"
                      >
-                        <UTooltip :text="asignatura.nombre">
-                           <p class="truncate font-medium text-usm-text dark:text-white">{{ asignatura.nombre }}</p>
+                        <UTooltip :text="ficha.nombre">
+                           <p class="truncate font-medium text-usm-text dark:text-white">{{ ficha.nombre }}</p>
                         </UTooltip>
                         <div class="flex items-center justify-between gap-1">
-                           <p class="truncate text-usm-text-muted dark:text-slate-400">{{ asignatura.codigo }}</p>
-                           <UTooltip :text="`${paralelosDeAsignatura(asignatura)} paralelo(s) creado(s)`">
+                           <p class="truncate text-usm-text-muted dark:text-slate-400">{{ ficha.codigo }}</p>
+                           <UTooltip
+                              v-if="vistaMalla === 'malla'"
+                              :text="`${paralelosDeAsignatura(ficha.asignatura)} paralelo(s) creado(s)`"
+                           >
                               <UBadge
                                  size="xs"
                                  variant="subtle"
-                                 :color="paralelosDeAsignatura(asignatura) > 0 ? 'info' : 'neutral'"
+                                 :color="paralelosDeAsignatura(ficha.asignatura) > 0 ? 'info' : 'neutral'"
                               >
                                  <UIcon name="i-lucide-copy" class="size-3" />
-                                 {{ paralelosDeAsignatura(asignatura) }}
+                                 {{ paralelosDeAsignatura(ficha.asignatura) }}
+                              </UBadge>
+                           </UTooltip>
+                           <UTooltip v-else :text="textoEquivalente(ficha)">
+                              <UBadge size="xs" variant="subtle" color="secondary" class="shrink-0">
+                                 <UIcon v-if="equivalenteAsignada(ficha)" name="i-lucide-check" class="size-3" />
+                                 ≡ {{ ficha.asignatura.codigo }}
                               </UBadge>
                            </UTooltip>
                         </div>
@@ -731,7 +877,7 @@ async function guardarCupo(paralelo: Paralelo) {
          </div>
 
          <!-- Paneles de curso: destino del arrastre -->
-         <div class="space-y-3">
+         <div class="min-w-0 space-y-3">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                <h3 class="font-semibold text-usm-text dark:text-white">Cursos del plan</h3>
                <UInput
@@ -754,7 +900,7 @@ async function guardarCupo(paralelo: Paralelo) {
                message="No se encontraron cursos con ese nombre"
             />
 
-            <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div v-else class="grid grid-cols-1 gap-4">
                <div
                   v-for="curso in cursosVisibles"
                   :key="curso.id"
@@ -819,7 +965,9 @@ async function guardarCupo(paralelo: Paralelo) {
                               :class="[
                                  esFueraDeSemestre(paralelo, curso)
                                     ? 'border-usm-yellow-300 bg-usm-yellow-50 dark:border-usm-yellow-800 dark:bg-usm-yellow-950'
-                                    : 'border-default bg-default',
+                                    : esDeEquivalente(paralelo)
+                                      ? 'border-secondary/60 bg-secondary/10'
+                                      : 'border-default bg-default',
                                  puedeBorrarParalelo &&
                                  editandoCodigoId !== paralelo.id &&
                                  editandoCupoId !== paralelo.id
@@ -874,8 +1022,16 @@ async function guardarCupo(paralelo: Paralelo) {
                                  </UBadge>
                               </UTooltip>
                               <span class="min-w-0 flex-1 truncate text-usm-text dark:text-white">
-                                 {{ paralelo.asignaturaPlan.asignatura.nombre }}
+                                 <span class="text-usm-text-muted dark:text-slate-400">
+                                    {{ asignaturaMostrada(paralelo).codigo }} ·
+                                 </span>
+                                 {{ asignaturaMostrada(paralelo).nombre }}
                               </span>
+                              <UTooltip v-if="esDeEquivalente(paralelo)" :text="textoEquivalenteParalelo(paralelo)">
+                                 <UBadge size="xs" variant="subtle" color="secondary" class="shrink-0">
+                                    {{ etiquetaEquivalenteParalelo(paralelo) }}
+                                 </UBadge>
+                              </UTooltip>
                               <UInput
                                  v-if="editandoCupoId === paralelo.id"
                                  v-model="cupoEditado"
@@ -925,7 +1081,7 @@ async function guardarCupo(paralelo: Paralelo) {
                </div>
             </div>
          </div>
-      </template>
+      </div>
 
       <!-- Advertencia: el semestre-en-plan de la asignatura no coincide con el del curso -->
       <ConfirmModal

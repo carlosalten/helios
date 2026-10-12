@@ -35,6 +35,7 @@ export default defineEventHandler(async (event) => {
          paralelo: {
             select: {
                codigo: true,
+               asignaturaEquivalente: { select: { codigo: true, nombre: true, nombreCorto: true } },
                asignaturaPlan: {
                   select: {
                      asignatura: { select: { codigo: true, nombre: true, nombreCorto: true } },
@@ -78,7 +79,7 @@ export default defineEventHandler(async (event) => {
       .filter((r) => r.paralelo != null)
       .map((r) => {
          const paralelo = r.paralelo!
-         const asignatura = paralelo.asignaturaPlan.asignatura
+         const asignatura = asignaturaVisibleParalelo(paralelo)
          const plan = paralelo.asignaturaPlan.plan
          return {
             reservaId: r.id,

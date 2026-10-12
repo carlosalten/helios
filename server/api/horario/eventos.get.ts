@@ -7,11 +7,12 @@
 const LATIDO_MS = 25_000
 
 export default defineEventHandler(async (event) => {
-   // El stream sirve a la matriz de clases y a las reservas de sala: alcanza con poder ver
-   // cualquiera de las dos páginas.
+   // El stream sirve a la matriz de clases, a las reservas de sala y a la vista de solo
+   // lectura /horario/salas: alcanza con poder ver cualquiera de esas páginas.
    await requiereAlgunPermiso(event, [
       ['/horario', 'ver'],
       ['/reservas/horario', 'ver'],
+      ['/horario/salas', 'ver'],
    ])
 
    const stream = createEventStream(event)
@@ -24,6 +25,10 @@ export default defineEventHandler(async (event) => {
    const latido = setInterval(() => {
       void stream.push({ event: 'latido', data: String(Date.now()) })
    }, LATIDO_MS)
+   // Latido inicial: la respuesta (y sus headers) recién sale con el primer mensaje, y hasta
+   // entonces el EventSource del cliente no dispara 'open' — sin esto el indicador "En vivo"
+   // se quedaba en "Reconectando…" los primeros LATIDO_MS de cada conexión.
+   void stream.push({ event: 'latido', data: String(Date.now()) })
 
    stream.onClosed(() => {
       clearInterval(latido)

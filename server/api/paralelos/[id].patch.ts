@@ -32,12 +32,22 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, message: 'Asignatura no encontrada en el plan' })
    }
 
+   // La equivalente se valida si viene; si no viene se conserva, salvo que haya cambiado la
+   // asignatura del plan: ahí la equivalente anterior ya no corresponde y se limpia.
+   let asignaturaEquivalenteId = parsed.data.asignaturaEquivalenteId
+   if (asignaturaEquivalenteId != null) {
+      await validarAsignaturaEquivalente(asignaturaPlan.id, asignaturaEquivalenteId)
+   } else if (asignaturaEquivalenteId === undefined && parsed.data.asignaturaPlanId !== existe.asignaturaPlanId) {
+      asignaturaEquivalenteId = null
+   }
+
    // Si cambia de curso, va al final del curso destino; si se queda en el mismo, conserva
    // su posición actual (editar código/cupo/asignatura no debe reordenar la columna).
+   const base = { ...parsed.data, asignaturaEquivalenteId }
    const data =
       parsed.data.cursoId !== existe.cursoId
-         ? { ...parsed.data, orden: await siguienteOrdenParalelo(parsed.data.cursoId) }
-         : parsed.data
+         ? { ...base, orden: await siguienteOrdenParalelo(parsed.data.cursoId) }
+         : base
 
    const actualizado = await prisma.paralelo.update({
       where: { id },
@@ -47,6 +57,7 @@ export default defineEventHandler(async (event) => {
          asignaturaPlan: {
             include: { asignatura: true, plan: { include: { carrera: true } } },
          },
+         asignaturaEquivalente: { select: { id: true, codigo: true, nombre: true, nombreCorto: true } },
       },
    })
 

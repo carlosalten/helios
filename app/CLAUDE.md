@@ -42,7 +42,8 @@ Los reportes (`bloques-libres`, `topes-horario`) procesan archivos en el browser
 ## Sesión y acceso
 
 - Sesión con **nuxt-auth-utils**: `useUserSession()` en pages/components; `getUserSession(event)` en server routes.
-- El objeto de sesión (`User`) extiende `SesionUsuario` (`app/types/auth.ts` + `auth.d.ts`): `{ email, nombre, apellido, activo, rol, permisos, carrerasJefe }`. Se calcula en el login a partir de una `Persona` con contraseña (ver [CLAUDE.md raíz](../CLAUDE.md)).
+- El objeto de sesión (`User`) extiende `SesionUsuario` (`app/types/sesionUsuario.ts` + `auth.d.ts`): `email`, `nombre`, `apellido`, `activo`, `rol`, `permisos`, `carrerasJefe`, más preferencias y flags del rol (ver el archivo). Se calcula en el login a partir de una `Persona` con contraseña (ver [CLAUDE.md raíz](../CLAUDE.md)).
+- `user.permisos` va codificado (`"ruta:letras"`) para que la cookie no pase de 4096 bytes: consúltalo siempre con `usePermiso(ruta)` o `tienePermisoSesion` (`app/types/permiso.ts`), nunca a mano. Es solo para la UI; el backend revalida cada request contra la BD.
 - **Hay control de acceso por rol** (ver [CLAUDE.md raíz](../CLAUDE.md)). El login guarda en la sesión `permisos` (agrupados por ruta) y, para `Jefe de Carrera`, `carrerasJefe`. El navbar y `auth.global.ts` los usan para ocultar navegación y bloquear páginas. `Administrador` ve todo (bypass).
 - `SesionUsuario.rol` es el nombre de una fila de la tabla `Rol` (administrable desde `/personas/tipos`, `app/types/persona.ts`), no un enum fijo en TS. Los roles con seed inicial son `Administrador`, `Director Departamento`, `Jefe de Carrera`, `Profesor`, `Apoyo Docente`, pero un Administrador puede agregar más.
 - Cookie de sesión (`nuxt.config.ts` → `runtimeConfig.session`): `sameSite: 'lax'`, `httpOnly`, `secure`, `maxAge: 8h`. **No mover fuera de `runtimeConfig`** (nuxt-auth-utils la lee desde ahí).
