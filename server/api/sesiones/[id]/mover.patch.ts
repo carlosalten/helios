@@ -25,10 +25,6 @@ export default defineEventHandler(async (event) => {
 
    const { diaSemana, bloqueId } = parsed.data
 
-   // Celda de origen: hay que capturarla antes de mover para poder ubicar, en los paralelos
-   // espejo, la sesión gemela que debe moverse junto con esta.
-   const bloqueIdAnterior = sesion.bloques[0]?.bloqueId
-
    const bloque = await prisma.bloque.findUnique({ where: { id: bloqueId } })
    if (!bloque) throw createError({ statusCode: 404, message: 'Bloque no encontrado' })
 
@@ -66,20 +62,6 @@ export default defineEventHandler(async (event) => {
       const titulo = tituloReservaSesion(actualizada.paralelo)
       if (actualizada.salaCodigo) {
          await regenerarReservaSesion(actualizada, bloque, semestre, titulo, actualizada.profesorId, hoy)
-      }
-
-      // El mismo paralelo dictado en otro curso se dicta el mismo día y bloque: su sesión
-      // gemela se mueve junto con esta. Ver server/utils/sesionesEspejo.ts.
-      if (bloqueIdAnterior !== undefined) {
-         await replicarMoverSesion(
-            actualizada.paralelo,
-            { tipo: actualizada.tipo, diaSemana: sesion.diaSemana, bloqueId: bloqueIdAnterior },
-            { diaSemana, bloqueId },
-            bloque,
-            semestre,
-            titulo,
-            hoy
-         )
       }
    }
 

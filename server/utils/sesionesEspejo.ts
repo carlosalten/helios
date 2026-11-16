@@ -1,151 +1,81 @@
-import type { TIPOS_SESION } from './sesiones.schemas'
-
-// Un mismo paralelo (misma asignatura, mismo código de paralelo y mismo semestre) puede estar
-// repetido en varios cursos: es la misma clase física dictada a más de una cohorte/plan. Por
-// eso sus sesiones tienen que ser idénticas —misma sala, profesor, día y bloque— y toda alta,
-// asignación, movimiento o baja se replica en las copias. Como cada sesión genera su propia
-// reserva de sala (ver reservasSesion.ts), replicar la sesión arrastra también su reserva.
+// Clases conjuntas ("paralelos espejo")
 //
-// La copia de una sesión se identifica por su celda: (tipo, diaSemana, bloqueId). Si los
-// paralelos están sincronizados, cada sesión tiene su gemela justo ahí. Un paralelo que quedó
-// desincronizado (datos anteriores a esta regla) simplemente no tiene gemela y se omite en vez
-// de hacer fallar la operación del usuario sobre el paralelo que sí eligió.
+// Una misma clase física puede estar registrada en más de un curso, incluso de carreras
+// distintas: p. ej. Inglés dictado a la vez a TUINF e IBTINF, en la misma sala y con el mismo
+// profesor. Cada Jefe de Carrera agenda SU paralelo; el sistema NO replica sesiones entre
+// paralelos (ni dentro de una carrera ni entre carreras) y ningún JC modifica sesiones de otra
+// carrera. Hasta nov. 2026 sí se replicaban por coincidencia de asignatura + código de paralelo,
+// y eso copiaba sesiones a paralelos de otra carrera que no eran la misma clase (caso HCW102-T
+// paralelo 300, 2027-1). No reintroducir esa replicación.
+//
+// Lo que sí se hace es RECONOCER la clase conjunta al leer el horario. Dos sesiones son la
+// misma clase cuando coinciden en TODO esto:
+//   - código de la asignatura visible: la equivalente si el paralelo se creó desde una, si no la
+//     de la malla (asignaturaVisibleParalelo),
+//   - código (número) de paralelo,
+//   - profesor (asignado, no nulo),
+//   - sala: la misma, o ninguna de las dos con sala (en planificación la sala suele asignarse al
+//     final; una con sala y la otra sin sala NO son la misma clase),
+//   - día y bloque.
+// Se usa para no marcarlas como tope entre sí (se destacan con el color de "paralelos en más de
+// un curso", preferencia de cada usuario) y para contarlas una sola vez en portada, pantalla
+// pública, agenda/carga del profesor e informes. Sin profesor asignado no son la misma clase:
+// cada sesión cuenta por separado.
+//
+// Topes: solo hay tope cuando dos sesiones de la misma celda comparten profesor y/o sala y NO
+// son la misma clase. Sin profesor ni sala asignados no hay tope posible.
 
-type TipoSesion = (typeof TIPOS_SESION)[number]
-
-// Lo mínimo para reconocer "el mismo paralelo" en otro curso.
-export type ParaleloIdentidad = {
+// Lo mínimo de un paralelo para identificar su clase.
+export type ParaleloClase = {
    id: number
    codigo: string
-   curso: { semestreId: number }
    asignaturaPlan: { asignatura: { codigo: string } }
+   asignaturaEquivalente?: { codigo: string } | null
 }
 
-// Celda de la matriz de horario que ocupa una sesión.
-type CeldaSesion = {
-   tipo: TipoSesion
-   diaSemana: number
-   bloqueId: number
+// Clave de "misma clase" SIN la celda (día/bloque, fecha/hora): cada uso le agrega la parte de
+// tiempo que corresponda (día + bloque en sesiones, fecha + hora en reservas). Sin profesor la
+// clase solo es igual a sí misma (clave por id de paralelo, que además sirve para
+// juntar los bloques contiguos de una misma clase de varias horas). Úsala siempre en vez de
+// armar la clave a mano, para que todos los criterios de la app queden iguales.
+export function claveClase(paralelo: ParaleloClase, profesorId: number | null, salaCodigo: string | null) {
+   if (profesorId === null) return `paralelo-${paralelo.id}`
+   const asignatura = asignaturaVisibleParalelo(paralelo).codigo
+   // Sin sala: compatible solo con otra sesión también sin sala.
+   return `conjunta|${asignatura}|${paralelo.codigo}|${profesorId}|${salaCodigo || 'sin-sala'}`
 }
 
-export function paralelosEspejoDe(paralelo: ParaleloIdentidad) {
-   return prisma.paralelo.findMany({
-      where: {
-         id: { not: paralelo.id },
-         codigo: paralelo.codigo,
-         curso: { semestreId: paralelo.curso.semestreId },
-         asignaturaPlan: { asignatura: { codigo: paralelo.asignaturaPlan.asignatura.codigo } },
-      },
-      select: { id: true },
+// Una ocurrencia de un paralelo en una celda de tiempo: `celda` es "día-bloque" para sesiones o
+// "fecha-hora" para reservas — lo que haga falta para que dos ocurrencias coincidan en tiempo.
+export type OcurrenciaClase = {
+   paralelo: ParaleloClase
+   profesorId: number | null
+   salaCodigo: string | null
+   celda: string
+}
+
+// Para conteos que juntan los bloques contiguos de una clase de varias horas (portada, pantalla
+// pública): devuelve, para cada paralelo, el id del paralelo que representa a su clase conjunta
+// (el menor id entre los paralelos con los que coincide como misma clase en alguna celda), o su
+// propio id si no forma parte de ninguna. Agrupar por representante (y no por `claveClase`)
+// evita partir en dos una misma clase cuyos bloques tienen asignación incompleta (p. ej. sala en
+// un bloque y no en el otro).
+export function representanteClaseConjunta(ocurrencias: OcurrenciaClase[]) {
+   const menorPorClave = new Map<string, number>()
+   const claves = ocurrencias.map((o) => {
+      const clase = claveClase(o.paralelo, o.profesorId, o.salaCodigo)
+      return clase.startsWith('conjunta|') ? `${clase}@${o.celda}` : null
    })
-}
-
-function buscarSesionEnCelda(paraleloId: number, celda: CeldaSesion) {
-   return prisma.sesionParalelo.findFirst({
-      where: {
-         paraleloId,
-         tipo: celda.tipo,
-         diaSemana: celda.diaSemana,
-         bloques: { some: { bloqueId: celda.bloqueId } },
-      },
+   ocurrencias.forEach((o, i) => {
+      const clave = claves[i]
+      if (!clave) return
+      menorPorClave.set(clave, Math.min(menorPorClave.get(clave) ?? o.paralelo.id, o.paralelo.id))
    })
-}
-
-// Un paralelo no puede tener dos sesiones en la misma celda, sea cual sea su tipo — es la misma
-// regla que aplica POST /api/sesiones. Ojo: acá el tipo NO entra en la búsqueda, a diferencia de
-// `buscarSesionEnCelda`, que sí lo usa para reconocer a la gemela de una sesión concreta.
-function celdaOcupada(paraleloId: number, diaSemana: number, bloqueId: number, exceptoId?: number) {
-   return prisma.sesionParalelo.findFirst({
-      where: {
-         paraleloId,
-         diaSemana,
-         bloques: { some: { bloqueId } },
-         ...(exceptoId !== undefined && { NOT: { id: exceptoId } }),
-      },
+   const representante = new Map<number, number>()
+   ocurrencias.forEach((o, i) => {
+      const clave = claves[i]
+      const candidato = clave ? (menorPorClave.get(clave) ?? o.paralelo.id) : o.paralelo.id
+      representante.set(o.paralelo.id, Math.min(representante.get(o.paralelo.id) ?? o.paralelo.id, candidato))
    })
-}
-
-// Alta: crea la misma sesión en cada paralelo espejo. Si el espejo ya tiene una sesión en esa
-// celda, se deja como está (la replicación es idempotente). La sesión nace sin sala ni
-// profesor, así que todavía no hay reserva que generar.
-export async function replicarCrearSesion(paralelo: ParaleloIdentidad, celda: CeldaSesion) {
-   for (const espejo of await paralelosEspejoDe(paralelo)) {
-      if (await celdaOcupada(espejo.id, celda.diaSemana, celda.bloqueId)) continue
-      await prisma.sesionParalelo.create({
-         data: {
-            paraleloId: espejo.id,
-            diaSemana: celda.diaSemana,
-            tipo: celda.tipo,
-            bloques: { create: { bloqueId: celda.bloqueId } },
-         },
-      })
-   }
-}
-
-// Asignar/quitar sala o profesor: la gemela queda en la misma celda, solo cambian sus datos.
-// Como comparten asignatura y código de paralelo, el título de la reserva es el mismo, igual
-// que el bloque y el semestre: se reusan los de la sesión de origen.
-export async function replicarAsignarSesion(
-   paralelo: ParaleloIdentidad,
-   celda: CeldaSesion,
-   datos: { salaCodigo: string | null; profesorId: number | null },
-   bloque: { inicio: Date; fin: Date },
-   semestre: { id: number; fechaInicio: Date; fechaFin: Date },
-   titulo: string,
-   hoy: Date
-) {
-   for (const espejo of await paralelosEspejoDe(paralelo)) {
-      const gemela = await buscarSesionEnCelda(espejo.id, celda)
-      if (!gemela) continue
-      const actualizada = await prisma.sesionParalelo.update({ where: { id: gemela.id }, data: datos })
-      await regenerarReservaSesion(actualizada, bloque, semestre, titulo, actualizada.profesorId, hoy)
-   }
-}
-
-// Mover a otro día/bloque: la gemela se busca en la celda ANTERIOR (la de origen ya se movió)
-// y se manda a la nueva. Si el espejo ya tiene otra sesión ocupando la celda destino, se omite:
-// mover la gemela ahí dejaría dos sesiones del mismo paralelo en la misma celda.
-export async function replicarMoverSesion(
-   paralelo: ParaleloIdentidad,
-   celdaAnterior: CeldaSesion,
-   celdaNueva: { diaSemana: number; bloqueId: number },
-   bloque: { inicio: Date; fin: Date },
-   semestre: { id: number; fechaInicio: Date; fechaFin: Date },
-   titulo: string,
-   hoy: Date
-) {
-   for (const espejo of await paralelosEspejoDe(paralelo)) {
-      const gemela = await buscarSesionEnCelda(espejo.id, celdaAnterior)
-      if (!gemela) continue
-
-      if (await celdaOcupada(espejo.id, celdaNueva.diaSemana, celdaNueva.bloqueId, gemela.id)) continue
-
-      const actualizada = await prisma.$transaction(async (tx) => {
-         await tx.sesionParaleloBloque.deleteMany({ where: { sesionParaleloId: gemela.id } })
-         await tx.sesionParaleloBloque.create({
-            data: { sesionParaleloId: gemela.id, bloqueId: celdaNueva.bloqueId },
-         })
-         return tx.sesionParalelo.update({
-            where: { id: gemela.id },
-            data: { diaSemana: celdaNueva.diaSemana },
-         })
-      })
-
-      if (actualizada.salaCodigo) {
-         await regenerarReservaSesion(actualizada, bloque, semestre, titulo, actualizada.profesorId, hoy)
-      }
-   }
-}
-
-// Baja: borra la gemela y, como en el endpoint de borrado, la parte de su reserva de sala que
-// todavía no ocurrió (no cae en cascada) — la que ya ocurrió queda como registro histórico.
-export async function replicarBorrarSesion(paralelo: ParaleloIdentidad, celda: CeldaSesion, hoy: Date) {
-   for (const espejo of await paralelosEspejoDe(paralelo)) {
-      const gemela = await buscarSesionEnCelda(espejo.id, celda)
-      if (!gemela) continue
-      await prisma.$transaction([
-         prisma.reserva.deleteMany({ where: { sesionParaleloId: gemela.id, fecha: { gte: hoy } } }),
-         prisma.sesionParalelo.delete({ where: { id: gemela.id } }),
-      ])
-   }
+   return (paraleloId: number) => representante.get(paraleloId) ?? paraleloId
 }
