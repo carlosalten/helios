@@ -56,18 +56,6 @@ export default defineEventHandler(async (event) => {
          if (semestre) {
             const titulo = tituloReservaSesion(sesion.paralelo)
             await regenerarReservaSesion(sesion, bloque, semestre, titulo, sesion.profesorId, hoy)
-
-            // El mismo paralelo dictado en otro curso comparte sala y profesor: se le copia el
-            // estado final (no solo el campo tocado). Ver server/utils/sesionesEspejo.ts.
-            await replicarAsignarSesion(
-               sesion.paralelo,
-               { tipo: sesion.tipo, diaSemana: sesion.diaSemana, bloqueId: bloque.id },
-               { salaCodigo: sesion.salaCodigo, profesorId: sesion.profesorId },
-               bloque,
-               semestre,
-               titulo,
-               hoy
-            )
          }
       }
    }

@@ -106,6 +106,15 @@ Estas reglas viven en PostgreSQL (no en Prisma) vía migraciones manuales con SQ
 
 > `Reserva.publica` (default `true`) controla si la reserva se muestra en vistas de cara al público: la vista impresa de `/horario/salas-semanal` y la pantalla pública (`/pantallas/<codigo>`). En `false` la reserva sigue tomando la sala en la BD y se ve igual que cualquier otra en la grilla interactiva de `/horario/salas-semanal`, pero queda fuera del reporte en papel y de `/pantallas/<codigo>` — para bloqueos internos (p. ej. mantenimiento) que no corresponde anunciar.
 
+## Clases conjuntas (sesiones sin replicación)
+
+Una misma clase física puede estar registrada en más de un curso, incluso de carreras distintas (p. ej. Inglés dictado a la vez a TUINF e IBTINF). Reglas (detalle en `server/utils/sesionesEspejo.ts`):
+
+- **No hay replicación de sesiones.** Cada Jefe de Carrera agenda las sesiones de su propio paralelo; crear, mover, asignar sala/profesor o borrar una sesión afecta solo a esa sesión. Ningún endpoint modifica sesiones de otra carrera. Hasta nov. 2026 se replicaban por coincidencia de asignatura + código de paralelo, y eso copió sesiones a paralelos de otra carrera que no eran la misma clase — **no reintroducir esa replicación**.
+- **Misma clase** = mismo código de asignatura visible (la equivalente si el paralelo se creó desde una; si no, la de la malla) + mismo código de paralelo + mismo profesor + misma sala (o ninguna de las dos con sala: en planificación la sala suele asignarse al final; una con sala y otra sin sala no son la misma clase) + mismo día y bloque. Sin profesor asignado nunca es la misma clase.
+- **Topes**: solo cuando dos sesiones de la misma celda comparten profesor y/o sala y no son la misma clase. Las clases conjuntas se destacan con el color de la preferencia "Destacar paralelos dictados en más de un curso" (`/cuenta/preferencias`).
+- **Deduplicación** (portada, pantalla pública, agenda/carga del profesor, informes): usar siempre `claveClase(paralelo, profesorId, salaCodigo)` (servidor, en `server/utils/sesionesEspejo.ts`; cliente, en `app/utils/paralelos.ts` — mantener ambas iguales) más la parte de tiempo que corresponda. Para juntar bloques contiguos de una clase de varias horas, agrupar por `representanteClaseConjunta(...)`, no por `claveClase`. No armar claves a mano con asignatura + código.
+
 ## Backend — API Nitro
 
 - Rutas en `server/api/`.

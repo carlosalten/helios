@@ -3,10 +3,10 @@
 // bloques de cada sesión (`SesionParaleloBloque`) por profesor, plan, asignatura y paralelo
 // (sin combinar el total de una asignatura si tiene más de un paralelo).
 //
-// Deduplicación: si existen varias filas `Paralelo`/`SesionParalelo` que representan la
-// misma clase (misma asignatura, mismo código de paralelo, mismo día y mismo bloque —
-// típicamente por datos duplicados), ese bloque se cuenta una sola vez. Por eso se agrupa
-// por código de paralelo (no por su id) y se dedupe con un Set de "día-bloque".
+// Deduplicación: una clase conjunta registrada en más de un curso (misma asignatura visible,
+// código de paralelo, profesor, sala, día y bloque — ver server/utils/sesionesEspejo.ts) se
+// cuenta una sola vez en el total del profesor y del plan (clave `claveClase`). Dentro de cada
+// fila de paralelo se dedupe con un Set de "día-bloque".
 //
 // Ver NO se acota por carrera (mismo criterio que /api/cursos): se muestran los bloques de
 // TODOS los planes que el usuario seleccionó en el filtro, sea o no una carrera que dirige o
@@ -42,8 +42,10 @@ export default defineEventHandler(async (event) => {
             select: { id: true, nombre: true, apellido: true, jornadaLaboral: true, rol: { select: { nombre: true } } },
          },
          diaSemana: true,
+         salaCodigo: true,
          paralelo: {
             select: {
+               id: true,
                codigo: true,
                asignaturaPlan: {
                   select: { planId: true, asignatura: { select: { id: true, nombre: true, codigo: true } } },
@@ -81,9 +83,9 @@ export default defineEventHandler(async (event) => {
          planes: new Map<number, PlanFila>(),
       }
 
-      const { planId, asignatura } = sesion.paralelo.asignaturaPlan
+      const { planId } = sesion.paralelo.asignaturaPlan
       // La fila del informe es la asignatura que se muestra (la equivalente, si el paralelo se
-      // programó desde una); la deduplicación de clases sigue por la asignatura de la malla.
+      // programó desde una); la deduplicación de clases conjuntas usa `claveClase`.
       const mostrada = asignaturaVisibleParalelo(sesion.paralelo)
       const codigoParalelo = sesion.paralelo.codigo
 
@@ -103,10 +105,11 @@ export default defineEventHandler(async (event) => {
          bloquesUnicos: new Set<string>(),
       }
 
-      // Clave global (asignatura + paralelo + día + bloque) para deduplicar en el
+      // Clave global (misma clase + día + bloque) para deduplicar clases conjuntas en el
       // profesor y en el plan; dentro del paralelo alcanza con día + bloque.
+      const clase = claveClase(sesion.paralelo, sesion.profesorId, sesion.salaCodigo)
       for (const { bloqueId } of sesion.bloques) {
-         const claveGlobal = `${asignatura.id}-${codigoParalelo}-${sesion.diaSemana}-${bloqueId}`
+         const claveGlobal = `${clase}-${sesion.diaSemana}-${bloqueId}`
          const claveLocal = `${sesion.diaSemana}-${bloqueId}`
          fila.bloquesUnicos.add(claveGlobal)
          plan.bloquesUnicos.add(claveGlobal)
@@ -133,8 +136,10 @@ export default defineEventHandler(async (event) => {
            select: {
               profesorId: true,
               diaSemana: true,
+              salaCodigo: true,
               paralelo: {
                  select: {
+                    id: true,
                     codigo: true,
                     asignaturaPlan: {
                        select: { planId: true, asignatura: { select: { id: true, nombre: true, codigo: true } } },
@@ -163,15 +168,16 @@ export default defineEventHandler(async (event) => {
       clases: Map<string, ClaseEnTope>
    }
 
-   // Por cada profesor, por cada "día-bloque", las clases (asignatura+código de paralelo)
-   // distintas dictadas ahí: si hay más de una, es un choque de horario.
+   // Por cada profesor, por cada "día-bloque", las clases distintas dictadas ahí (una clase
+   // conjunta en varios cursos cuenta como una, ver `claveClase`): si hay más de una, es un
+   // choque de horario.
    const gruposPorProfesor = new Map<number, Map<string, GrupoBloque>>()
    for (const sesion of sesionesParaTopes) {
       if (!sesion.profesorId) continue
       const grupos = gruposPorProfesor.get(sesion.profesorId) ?? new Map<string, GrupoBloque>()
       const { planId, asignatura } = sesion.paralelo.asignaturaPlan
       const codigoParalelo = sesion.paralelo.codigo
-      const claveClase = `${asignatura.id}-${codigoParalelo}`
+      const clase = claveClase(sesion.paralelo, sesion.profesorId, sesion.salaCodigo)
 
       for (const { bloque } of sesion.bloques) {
          const claveLocal = `${sesion.diaSemana}-${bloque.id}`
@@ -183,7 +189,7 @@ export default defineEventHandler(async (event) => {
             bloqueFin: bloque.fin.toISOString(),
             clases: new Map<string, ClaseEnTope>(),
          }
-         grupo.clases.set(claveClase, {
+         grupo.clases.set(clase, {
             asignaturaId: asignatura.id,
             asignaturaNombre: asignaturaVisibleParalelo(sesion.paralelo).nombre,
             asignaturaCodigo: asignaturaVisibleParalelo(sesion.paralelo).codigo,
