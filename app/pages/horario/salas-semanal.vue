@@ -271,10 +271,18 @@ function periodoDe(minutos: number): Periodo {
    return 'manana'
 }
 
+// El rango va del primer al último bloque del semestre, pero se ESTIRA para cubrir cualquier
+// reserva de la semana visible que empiece antes o termine después (p. ej. una evaluación a las
+// 08:00 cuando el primer bloque parte 08:15): el backend acepta cualquier hora en múltiplos de 5
+// minutos, y una reserva fuera del rango no tendría franja donde dibujarse y desaparecería de la
+// grilla (junto con todo su cluster de solapamiento) sin ningún aviso.
 const franjas = computed<Franja[]>(() => {
    if (!bloquesSemestre.value.length) return []
-   const horas = bloquesSemestre.value.flatMap((b) => [horaDeISO(b.inicio), horaDeISO(b.fin)])
-   const inicioMin = Math.min(...horas.map(horaAMinutos))
+   const horas = [
+      ...bloquesSemestre.value.flatMap((b) => [horaDeISO(b.inicio), horaDeISO(b.fin)]),
+      ...(reservas.value ?? []).flatMap((r) => [horaDeISO(r.inicio), horaDeISO(r.fin)]),
+   ]
+   const inicioMin = Math.floor(Math.min(...horas.map(horaAMinutos)) / 5) * 5
    const finMin = Math.max(...horas.map(horaAMinutos))
    const lista: Franja[] = []
    let indice = 0
@@ -462,8 +470,17 @@ const gridPorDia = computed(() => {
       for (const cluster of agruparEnClusters(reservasDia)) {
          const clusterInicioMin = Math.min(...cluster.map((r) => horaAMinutos(horaDeISO(r.inicio))))
          const clusterFinMin = Math.max(...cluster.map((r) => horaAMinutos(horaDeISO(r.fin))))
-         const idxInicio = franjas.value.findIndex((f) => horaAMinutos(f.horaInicio) === clusterInicioMin)
-         if (idxInicio === -1) continue
+         // Con el rango estirado (ver `franjas`) siempre hay franja exacta; si igual faltara, se
+         // usa la franja que contiene el inicio (o la última) en vez de descartar el cluster.
+         const idxExacto = franjas.value.findIndex((f) => horaAMinutos(f.horaInicio) === clusterInicioMin)
+         const idxInicio =
+            idxExacto !== -1
+               ? idxExacto
+               : Math.max(
+                    0,
+                    franjas.value.findLastIndex((f) => horaAMinutos(f.horaInicio) <= clusterInicioMin)
+                 )
+         if (!franjas.value.length) continue
          const span = Math.max(1, Math.round((clusterFinMin - clusterInicioMin) / 5))
          const { columnaDe, totalColumnas } = asignarColumnas(cluster)
          const reservasPosicionadas: ReservaPosicionada[] = cluster.map((r) => ({

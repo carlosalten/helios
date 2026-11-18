@@ -66,10 +66,6 @@ export default defineEventHandler(async (event) => {
       include: incluirSesion,
    })
 
-   // El mismo paralelo dictado en otro curso es la misma clase: recibe la misma sesión.
-   // Ver server/utils/sesionesEspejo.ts.
-   await replicarCrearSesion(paralelo, { tipo, diaSemana, bloqueId })
-
    publicarEventoHorario({
       tipo: 'sesion',
       accion: 'crear',

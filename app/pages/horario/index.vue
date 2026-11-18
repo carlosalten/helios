@@ -120,15 +120,18 @@ const { conectado: enVivo } = useHorarioTiempoReal(async (eventos) => {
    })
 })
 
-// Dos sesiones son "del mismo paralelo" si comparten asignatura y código de paralelo: es la
-// misma clase física dictada en más de un curso (ver server/utils/sesionesEspejo.ts), no dos
-// clases distintas. Se compara por código y no por paraleloId justamente porque son filas
-// `Paralelo` distintas, una por curso. Mismo criterio que usa el informe de bloques por
-// profesor (server/api/horario/profesores.get.ts) para no contar dos veces esos bloques.
+// Dos sesiones son "la misma clase" (clase conjunta registrada en más de un curso, incluso de
+// carreras distintas) si coinciden en asignatura visible, código de paralelo, profesor, sala (la
+// misma, o ninguna de las dos con sala), día y bloque — ver server/utils/sesionesEspejo.ts. Entre
+// ellas no hay tope: se destacan con el color de la preferencia "paralelos en más de un curso".
+// Sin profesor nunca son la misma clase. Cada JC agenda su propio paralelo: el sistema ya no replica sesiones.
 function esMismoParalelo(a: SesionParalelo, b: SesionParalelo) {
+   const clave = claveClase(a.paralelo, a.profesorId, a.salaCodigo)
    return (
-      a.paralelo.asignaturaPlan.asignatura.id === b.paralelo.asignaturaPlan.asignatura.id &&
-      a.paralelo.codigo === b.paralelo.codigo
+      clave.startsWith('conjunta|') &&
+      clave === claveClase(b.paralelo, b.profesorId, b.salaCodigo) &&
+      a.diaSemana === b.diaSemana &&
+      a.bloqueId === b.bloqueId
    )
 }
 
@@ -179,7 +182,7 @@ function tieneTope(sesion: SesionParalelo) {
    return conflictos(sesion).length > 0
 }
 
-// Un tope contra el mismo paralelo en otro curso es esperable: la sala y el profesor están
+// Un tope contra la misma clase conjunta en otro curso es esperable: la sala y el profesor están
 // tomados una sola vez porque es una sola clase. Se destaca con el color elegido en
 // /cuenta/preferencias (celeste por defecto) para que se vea que ahí hay más de un curso, pero
 // sin la alarma del amarillo. El amarillo (warning) queda para el choque real: paralelos
@@ -256,10 +259,9 @@ const profesoresFiltrados = computed(() =>
 
 /* ── Carga de cada profesor en el semestre ───────────────────
    Se cuenta con las mismas reglas que el informe /horario/profesores
-   (server/api/horario/profesores.get.ts): combinaciones únicas de asignatura + código de
-   paralelo + día + bloque. Deduplicar por código de paralelo (y no por su id) es lo que hace
-   que un mismo paralelo dictado en varios cursos — ver server/utils/sesionesEspejo.ts — sume
-   una sola vez en vez de multiplicarse.
+   (server/api/horario/profesores.get.ts): combinaciones únicas de `claveClase` + día + bloque,
+   así una clase conjunta registrada en varios cursos — ver server/utils/sesionesEspejo.ts —
+   suma una sola vez en vez de multiplicarse.
 
    `ocupacion` ya trae todas las sesiones del semestre de todas las carreras (no solo la
    seleccionada) y se refresca en vivo, así que el conteo no necesita otro fetch. A diferencia
@@ -268,7 +270,7 @@ const bloquesPorProfesor = computed(() => {
    const porProfesor = new Map<number, Set<string>>()
    for (const sesion of ocupacion.value ?? []) {
       if (!sesion.profesorId || sesion.bloqueId === null) continue
-      const clave = `${sesion.paralelo.asignaturaPlan.asignatura.id}-${sesion.paralelo.codigo}-${sesion.diaSemana}-${sesion.bloqueId}`
+      const clave = `${claveClase(sesion.paralelo, sesion.profesorId, sesion.salaCodigo)}-${sesion.diaSemana}-${sesion.bloqueId}`
       const bloques = porProfesor.get(sesion.profesorId) ?? new Set<string>()
       bloques.add(clave)
       porProfesor.set(sesion.profesorId, bloques)

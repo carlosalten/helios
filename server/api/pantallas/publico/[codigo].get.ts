@@ -176,9 +176,9 @@ export default defineEventHandler(async (event) => {
       orderBy: { inicio: 'asc' },
    })
 
-   // El mismo paralelo dictado en otro curso (ver server/utils/sesionesEspejo.ts) genera una
-   // reserva por curso sobre la MISMA sala a la misma hora — es una sola clase física. Se
-   // deduplica por sala+asignatura+paralelo+inicio, mismo criterio que /api/dashboard. Una
+   // Una clase conjunta registrada en varios cursos (ver server/utils/sesionesEspejo.ts) genera
+   // una reserva por curso sobre la MISMA sala a la misma hora — es una sola clase física. Se
+   // deduplica por `claveClase` + inicio, mismo criterio que /api/dashboard. Una
    // reserva sin paralelo no tiene ese problema (no hay "espejo" fuera de sesiones de clases),
    // así que se deduplica trivialmente por su propio id.
    const vistas = new Set<string>()
@@ -191,7 +191,7 @@ export default defineEventHandler(async (event) => {
       const fin = aHora(r.fin)
 
       const claveDedup = paralelo
-         ? `${r.salaCodigo}-${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}-${inicio}`
+         ? `${r.salaCodigo}-${claveClase(paralelo, r.personaId, r.salaCodigo)}-${inicio}`
          : `reserva-${r.id}`
       if (vistas.has(claveDedup)) continue
       vistas.add(claveDedup)
@@ -215,9 +215,7 @@ export default defineEventHandler(async (event) => {
          fin,
          responsable: r.persona ? `${r.persona.nombre} ${r.persona.apellido}` : null,
          suspendida: r.suspendida,
-         grupoId: paralelo
-            ? `${r.salaCodigo}-${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}`
-            : `sola-${r.id}`,
+         grupoId: paralelo ? `${r.salaCodigo}-${claveClase(paralelo, r.personaId, r.salaCodigo)}` : `sola-${r.id}`,
          bloqueNumero: bloqueNumeroPorHoraInicio.get(inicio) ?? null,
       })
    }

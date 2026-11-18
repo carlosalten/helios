@@ -64,19 +64,19 @@ export default defineEventHandler(async (event) => {
       prisma.feriado.findMany({ where: { semestreId } }),
    ])
 
-   // Clave de "misma clase física": un paralelo dictado en varios cursos (ver
+   // Clave de "misma clase física": una clase conjunta registrada en varios cursos (ver
    // server/utils/sesionesEspejo.ts) tiene una sesión —y por lo tanto una reserva— por curso,
-   // todas a la misma hora y en la misma sala. En la agenda del profesor eso es UNA sola clase:
-   // se agrupan por asignatura + código de paralelo + fecha + horario, y los cursos se juntan en
-   // un solo texto para que igual se vea a quiénes les hace esa clase.
-   const claveClase = (e: { fecha: string; inicio: string; fin: string }, asignaturaId: number, paralelo: string) =>
-      `${e.fecha}|${e.inicio}|${e.fin}|${asignaturaId}|${paralelo}`
+   // todas a la misma hora, en la misma sala y con este mismo profesor. En la agenda del
+   // profesor eso es UNA sola clase: se agrupan por `claveClase` + fecha + horario, y los cursos
+   // se juntan en un solo texto para que igual se vea a quiénes les hace esa clase.
+   const claveAgenda = (e: { fecha: string; inicio: string; fin: string }, clase: string) =>
+      `${e.fecha}|${e.inicio}|${e.fin}|${clase}`
 
    const eventos: EventoAgenda[] = []
    const clasesPorClave = new Map<string, { evento: EventoAgenda; cursos: Set<string> }>()
 
-   function agregarClase(evento: EventoAgenda, asignaturaId: number, curso: string) {
-      const clave = claveClase(evento, asignaturaId, evento.paraleloCodigo ?? '')
+   function agregarClase(evento: EventoAgenda, clase: string, curso: string) {
+      const clave = claveAgenda(evento, clase)
       const existente = clasesPorClave.get(clave)
       if (existente) {
          existente.cursos.add(curso)
@@ -106,7 +106,8 @@ export default defineEventHandler(async (event) => {
          tipoReserva: reserva.tipoReserva.nombre,
          suspendida: reserva.suspendida,
       }
-      if (paralelo) agregarClase(evento, paralelo.asignaturaPlan.asignaturaId, paralelo.curso.nombre)
+      if (paralelo)
+         agregarClase(evento, claveClase(paralelo, reserva.personaId, reserva.salaCodigo), paralelo.curso.nombre)
       else eventos.push(evento)
    }
 
@@ -130,7 +131,6 @@ export default defineEventHandler(async (event) => {
             if (feriado && feriadoCubreBloque(feriado, bloque)) continue
 
             const { paralelo } = sesion
-            // Pasa por el mismo agrupador: dos sesiones espejo sin sala también son una clase.
             agregarClase(
                {
                   id: `s-${sesion.id}-${aISO(fecha)}`,
@@ -151,7 +151,8 @@ export default defineEventHandler(async (event) => {
                   // Sin fila `Reserva` no hay nada que suspender.
                   suspendida: false,
                },
-               paralelo.asignaturaPlan.asignaturaId,
+               // Dos sesiones sin sala de la misma clase conjunta (ver `claveClase`) son una sola clase.
+               claveClase(paralelo, sesion.profesorId, sesion.salaCodigo),
                paralelo.curso.nombre
             )
          }

@@ -23,26 +23,10 @@ export default defineEventHandler(async (event) => {
    // todavía no ocurrió (fecha >= hoy), para no dejar la sala reservada "fantasma" por una
    // clase que ya no existe; la que ya ocurrió queda como registro histórico, ahora suelta
    // (sesionParaleloId nulo) porque la sesión deja de existir.
-   const bloqueIdBorrado = existe.bloques[0]?.bloqueId
-
    await prisma.$transaction([
       prisma.reserva.deleteMany({ where: { sesionParaleloId: id, fecha: { gte: hoy } } }),
       prisma.sesionParalelo.delete({ where: { id } }),
    ])
-
-   // El mismo paralelo dictado en otro curso pierde también esta sesión (y su reserva futura).
-   // Ver server/utils/sesionesEspejo.ts.
-   if (bloqueIdBorrado !== undefined) {
-      await replicarBorrarSesion(
-         existe.paralelo,
-         {
-            tipo: existe.tipo,
-            diaSemana: existe.diaSemana,
-            bloqueId: bloqueIdBorrado,
-         },
-         hoy
-      )
-   }
 
    publicarEventoHorario({
       tipo: 'sesion',

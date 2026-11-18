@@ -1,3 +1,5 @@
+import type { ParaleloClase } from '../utils/sesionesEspejo'
+
 // Resumen que alimenta la portada (`/`).
 //
 // Solo exige sesión, sin chequeo contra la tabla `permiso`: `/` está en
@@ -26,10 +28,11 @@ interface ResumenAgenda {
 
 // Forma mínima de paralelo que necesita `calcularIndicadoresHoy` — la satisfacen tanto el
 // select de `sesiones` (acotado por carrera) como el de `sesionesSalaPropiaHoy` (por sala).
-interface SesionParaIndicador {
-   codigo: string
+// Incluye lo que pide `claveClase` (ver server/utils/sesionesEspejo.ts) para reconocer clases
+// conjuntas.
+interface SesionParaIndicador extends ParaleloClase {
    cursoId: number
-   asignaturaPlan: { asignaturaId: number }
+   asignaturaPlan: { asignaturaId: number; asignatura: { codigo: string } }
 }
 
 function aISO(fecha: Date) {
@@ -173,9 +176,16 @@ export default defineEventHandler(async (event) => {
               },
               select: {
                  profesorId: true,
+                 salaCodigo: true,
                  bloques: { select: { bloqueId: true } },
                  paralelo: {
-                    select: { codigo: true, cursoId: true, asignaturaPlan: { select: { asignaturaId: true } } },
+                    select: {
+                       id: true,
+                       codigo: true,
+                       cursoId: true,
+                       asignaturaEquivalente: { select: { codigo: true } },
+                       asignaturaPlan: { select: { asignaturaId: true, asignatura: { select: { codigo: true } } } },
+                    },
                  },
               },
            })
@@ -196,6 +206,7 @@ export default defineEventHandler(async (event) => {
                select: {
                   paralelo: {
                      select: {
+                        id: true,
                         codigo: true,
                         color: true,
                         cursoId: true,
@@ -260,9 +271,11 @@ export default defineEventHandler(async (event) => {
             salaCodigo: true,
             sesionParalelo: {
                select: {
+                  profesorId: true,
                   profesor: { select: { nombre: true, apellido: true } },
                   paralelo: {
                      select: {
+                        id: true,
                         codigo: true,
                         color: true,
                         asignaturaEquivalente: { select: { codigo: true, nombre: true } },
@@ -279,12 +292,12 @@ export default defineEventHandler(async (event) => {
             },
          },
          orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
-         // De sobra para poder deduplicar los paralelos espejo y quedarse con las primeras.
+         // De sobra para poder deduplicar las clases conjuntas y quedarse con las primeras.
          take: 40,
       }),
       // Próximas reservas de sala que NO son de clase (sesionParaleloId nulo): ayudantías,
       // reuniones, eventos, etc. Mismo criterio de alcance y de "aún no termina" que las
-      // próximas clases, pero sin necesidad de deduplicar por paralelo espejo — cada fila ya es
+      // próximas clases, pero sin necesidad de deduplicar clases conjuntas — cada fila ya es
       // una ocurrencia real y distinta.
       prisma.reserva.findMany({
          where: {
@@ -334,11 +347,25 @@ export default defineEventHandler(async (event) => {
    }
 
    // Cuenta clases físicas y reservas sueltas de una lista de reservas de hoy (de una sala o de
-   // varias). Dos cosas se deduplican: las copias del mismo paralelo espejo a la misma hora (ver
-   // sesionesEspejo.ts) y los bloques contiguos del mismo paralelo en la misma sala (una clase de
+   // varias). Dos cosas se deduplican: las copias de una clase conjunta a la misma hora (ver
+   // sesionesEspejo.ts) y los bloques contiguos de la misma clase en la misma sala (una clase de
    // varios bloques, igual que `contarTramosContiguos`). Las reservas sueltas (sin sesión) no se
    // fusionan aunque queden pegadas: cada una es un evento real e independiente.
    function contarEventosSala(lista: typeof reservasHoy) {
+      const representante = representanteClaseConjunta(
+         lista.flatMap((r) =>
+            r.sesionParalelo
+               ? [
+                    {
+                       paralelo: r.sesionParalelo.paralelo,
+                       profesorId: r.personaId,
+                       salaCodigo: r.salaCodigo,
+                       celda: String(r.inicio.getTime()),
+                    },
+                 ]
+               : []
+         )
+      )
       const intervalosPorClase = new Map<string, Map<number, number>>()
       let reservas = 0
       for (const reserva of lista) {
@@ -347,7 +374,7 @@ export default defineEventHandler(async (event) => {
             reservas++
             continue
          }
-         const clave = `${reserva.salaCodigo}-${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}`
+         const clave = `${reserva.salaCodigo}-${representante(paralelo.id)}`
          const intervalos = intervalosPorClase.get(clave) ?? new Map<number, number>()
          intervalos.set(reserva.inicio.getTime(), reserva.fin.getTime())
          intervalosPorClase.set(clave, intervalos)
@@ -365,13 +392,13 @@ export default defineEventHandler(async (event) => {
    }
 
    /* ── Clases de hoy ─────────────────────────────────────────────────────
-      Un mismo paralelo dictado en varios cursos (ver server/utils/sesionesEspejo.ts) tiene una
-      sesión por curso, pero es UNA sola clase física. Se deduplica con la misma clave que usa
-      el informe de bloques por profesor: asignatura + código de paralelo + día + bloque. */
+      Una clase conjunta registrada en varios cursos (ver server/utils/sesionesEspejo.ts) tiene
+      una sesión por curso, pero es UNA sola clase física. Se deduplica con la misma clave que usa
+      el informe de bloques por profesor: `claveClase` + día + bloque. */
    const claveClaseFisica = (s: (typeof sesiones)[number], bloqueId: number) =>
-      `${s.paralelo.asignaturaPlan.asignaturaId}-${s.paralelo.codigo}-${s.diaSemana}-${bloqueId}`
+      `${claveClase(s.paralelo, s.profesorId, s.salaCodigo)}-${s.diaSemana}-${bloqueId}`
 
-   // Cuenta clases físicas (deduplicando paralelo espejo Y bloques contiguos de una misma clase
+   // Cuenta clases físicas (deduplicando clases conjuntas Y bloques contiguos de una misma clase
    // de varias horas, igual que calcularIndicadoresHoy más abajo) y cuántas de esas clases
    // tienen sala y profesor asignado — para "Estado de la planificación" (global y por carrera).
    // Antes esto se contaba con claveClaseFisica directo (una entrada por bloque), así que una
@@ -387,9 +414,19 @@ export default defineEventHandler(async (event) => {
          paralelo: SesionParaIndicador
       }[]
    ) {
+      const representante = representanteClaseConjunta(
+         lista.flatMap((sesion) =>
+            sesion.bloques.map(({ bloqueId }) => ({
+               paralelo: sesion.paralelo,
+               profesorId: sesion.profesorId,
+               salaCodigo: sesion.salaCodigo,
+               celda: `${sesion.diaSemana}-${bloqueId}`,
+            }))
+         )
+      )
       const porClaveDia = new Map<string, Map<number, { sala: boolean; profesor: boolean }>>()
       for (const sesion of lista) {
-         const claveDia = `${sesion.paralelo.asignaturaPlan.asignaturaId}-${sesion.paralelo.codigo}-${sesion.diaSemana}`
+         const claveDia = `${representante(sesion.paralelo.id)}-${sesion.diaSemana}`
          const porBloque = porClaveDia.get(claveDia) ?? new Map<number, { sala: boolean; profesor: boolean }>()
          for (const { bloqueId } of sesion.bloques) {
             const flags = porBloque.get(bloqueId) ?? { sala: false, profesor: false }
@@ -438,17 +475,33 @@ export default defineEventHandler(async (event) => {
    }
 
    // Clases, cursos y profesores con clase hoy, sobre una lista de sesiones ya acotada (por sala
-   // o por carrera, según el rol — ver más abajo). Además de deduplicar por paralelo espejo, los
-   // bloques contiguos del mismo paralelo (una clase de varias horas) son una sola clase — se
-   // agrupan por asignatura+paralelo y se cuentan los tramos contiguos, no los bloques sueltos.
+   // o por carrera, según el rol — ver más abajo). Además de deduplicar clases conjuntas, los
+   // bloques contiguos de la misma clase (una clase de varias horas) son una sola clase — se
+   // agrupan por representante de la clase y se cuentan los tramos contiguos, no los bloques.
    function calcularIndicadoresHoy(
-      lista: { profesorId: number | null; bloques: { bloqueId: number }[]; paralelo: SesionParaIndicador }[]
+      lista: {
+         profesorId: number | null
+         salaCodigo: string | null
+         bloques: { bloqueId: number }[]
+         paralelo: SesionParaIndicador
+      }[]
    ) {
-      const bloquesPorClase = new Map<string, Set<number>>()
+      // Toda la lista es de hoy: la celda es solo el bloque.
+      const representante = representanteClaseConjunta(
+         lista.flatMap((sesion) =>
+            sesion.bloques.map(({ bloqueId }) => ({
+               paralelo: sesion.paralelo,
+               profesorId: sesion.profesorId,
+               salaCodigo: sesion.salaCodigo,
+               celda: String(bloqueId),
+            }))
+         )
+      )
+      const bloquesPorClase = new Map<number, Set<number>>()
       const cursos = new Set<number>()
       const profesores = new Set<number>()
       for (const sesion of lista) {
-         const clave = `${sesion.paralelo.asignaturaPlan.asignaturaId}-${sesion.paralelo.codigo}`
+         const clave = representante(sesion.paralelo.id)
          const bloqueIds = bloquesPorClase.get(clave) ?? new Set<number>()
          for (const { bloqueId } of sesion.bloques) bloqueIds.add(bloqueId)
          bloquesPorClase.set(clave, bloqueIds)
@@ -474,7 +527,7 @@ export default defineEventHandler(async (event) => {
 
    /* ── Estado de la planificación ────────────────────────────────────────
       Los conteos van sobre clases físicas (deduplicadas), no sobre filas `SesionParalelo`: si
-      no, un paralelo espejo contaría doble su falta de sala o de profesor, y una clase de
+      no, una clase conjunta registrada en varios cursos contaría doble, y una clase de
       varios bloques contaría una vez por bloque en vez de una sola vez (ver
       contarClasesFisicas). */
    const {
@@ -507,8 +560,8 @@ export default defineEventHandler(async (event) => {
 
    /* ── Topes reales ──────────────────────────────────────────────────────
       Dos sesiones que comparten sala o profesor en el mismo día y bloque. Cuando todas las
-      involucradas son el MISMO paralelo (espejo en otro curso) no es un choque: es una sola
-      clase ocupando el recurso una vez. Solo se cuentan los choques entre paralelos distintos. */
+      involucradas son la MISMA clase conjunta (ver `claveClase`) no es un choque: es una sola
+      clase ocupando el recurso una vez. Solo se cuentan los choques entre clases distintas. */
    function contarTopes(clavePorSesion: (s: (typeof sesiones)[number]) => string | null) {
       const grupos = new Map<string, Set<string>>()
       for (const sesion of sesiones) {
@@ -517,7 +570,7 @@ export default defineEventHandler(async (event) => {
          for (const { bloqueId } of sesion.bloques) {
             const clave = `${sesion.diaSemana}-${bloqueId}-${recurso}`
             const paralelosDistintos = grupos.get(clave) ?? new Set<string>()
-            paralelosDistintos.add(`${sesion.paralelo.asignaturaPlan.asignaturaId}-${sesion.paralelo.codigo}`)
+            paralelosDistintos.add(claveClase(sesion.paralelo, sesion.profesorId, sesion.salaCodigo))
             grupos.set(clave, paralelosDistintos)
          }
       }
@@ -626,10 +679,10 @@ export default defineEventHandler(async (event) => {
    }
 
    /* ── Próximas clases en mis salas ──────────────────────────────────────
-      Un paralelo dictado en varios cursos (ver server/utils/sesionesEspejo.ts) tiene una sesión
-      por curso y, por lo tanto, una reserva por curso sobre la MISMA sala a la misma hora: es
-      una sola clase física. Se deduplica por asignatura + código de paralelo + fecha + hora,
-      igual que el resto de los conteos de la portada. */
+      Una clase conjunta registrada en varios cursos (ver server/utils/sesionesEspejo.ts) tiene
+      una sesión por curso y, por lo tanto, una reserva por curso sobre la MISMA sala a la misma
+      hora: es una sola clase física. Se deduplica por `claveClase` + fecha + hora, igual que el
+      resto de los conteos de la portada. */
    const clavesVistas = new Set<string>()
    const proximasClases = proximasClasesRaw
       .flatMap((reserva) => {
@@ -638,7 +691,7 @@ export default defineEventHandler(async (event) => {
          const { paralelo } = sesion
          const fecha = aISO(reserva.fecha)
          const inicio = aHora(reserva.inicio)
-         const clave = `${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}-${fecha}-${inicio}`
+         const clave = `${claveClase(paralelo, sesion.profesorId, reserva.salaCodigo)}-${fecha}-${inicio}`
          if (clavesVistas.has(clave)) return []
          clavesVistas.add(clave)
          return [
@@ -708,7 +761,7 @@ export default defineEventHandler(async (event) => {
             // Las reservas sin sesión (ayudantías, reuniones…) no se fusionan: cada una es un
             // evento real e independiente, no un tramo de una misma clase.
             claveGrupo: paralelo
-               ? `${paralelo.asignaturaPlan.asignaturaId}-${paralelo.codigo}-${reserva.salaCodigo}`
+               ? `${claveClase(paralelo, reserva.personaId, reserva.salaCodigo)}-${reserva.salaCodigo}`
                : null,
          })
       }
@@ -722,7 +775,7 @@ export default defineEventHandler(async (event) => {
             for (const { bloqueId } of sesion.bloques) {
                const bloque = bloquePorId.get(bloqueId)
                if (!bloque) continue
-               // Dos sesiones espejo sin sala son una sola clase.
+               // Dos sesiones sin sala de la misma clase conjunta (ver `claveClase`) son una sola clase.
                const clave = claveClaseFisica(sesion, bloqueId)
                if (vistas.has(clave)) continue
                vistas.add(clave)
@@ -734,7 +787,7 @@ export default defineEventHandler(async (event) => {
                   salaCodigo: null,
                   color: sesion.paralelo.color,
                   esClase: true,
-                  claveGrupo: `${sesion.paralelo.asignaturaPlan.asignaturaId}-${sesion.paralelo.codigo}-sin-sala`,
+                  claveGrupo: `${claveClase(sesion.paralelo, sesion.profesorId, null)}-sin-sala`,
                })
             }
          }

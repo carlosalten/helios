@@ -1,12 +1,32 @@
 // Asignatura que se MUESTRA para un paralelo: la equivalente desde la que se programó
-// (Paralelo.asignaturaEquivalente) o, si no hay, la de la malla. Solo para mostrar — la lógica
-// (bloques requeridos, espejos, duplicados) sigue usando la asignatura de la malla, que es bajo
-// la que cuelga el paralelo. Mismo criterio que `asignaturaVisibleParalelo` en el servidor.
+// (Paralelo.asignaturaEquivalente) o, si no hay, la de la malla. La lógica de bloques requeridos
+// y duplicados sigue usando la asignatura de la malla, que es bajo la que cuelga el paralelo; el
+// reconocimiento de clases conjuntas (`claveClase`) sí usa esta. Mismo criterio que
+// `asignaturaVisibleParalelo` en el servidor.
 export function asignaturaVisible<A, E>(paralelo: {
    asignaturaEquivalente?: E | null
    asignaturaPlan: { asignatura: A }
 }): A | E {
    return paralelo.asignaturaEquivalente ?? paralelo.asignaturaPlan.asignatura
+}
+
+// Clave de "misma clase" (clase conjunta registrada en más de un curso, incluso de carreras
+// distintas) SIN la celda: asignatura visible + código de paralelo + profesor + sala (la misma, o
+// ninguna de las dos con sala). Sin profesor la clase solo es igual a sí misma. Copia exacta de `claveClase` en
+// server/utils/sesionesEspejo.ts (ver ahí la regla completa): mantener ambas iguales.
+export function claveClase(
+   paralelo: {
+      id: number
+      codigo: string
+      asignaturaPlan: { asignatura: { codigo: string } }
+      asignaturaEquivalente?: { codigo: string } | null
+   },
+   profesorId: number | null,
+   salaCodigo: string | null
+) {
+   if (profesorId === null) return `paralelo-${paralelo.id}`
+   // Sin sala: compatible solo con otra sesión también sin sala.
+   return `conjunta|${asignaturaVisible(paralelo).codigo}|${paralelo.codigo}|${profesorId}|${salaCodigo || 'sin-sala'}`
 }
 
 // Un mismo curso no puede tener dos paralelos de la misma asignatura con el mismo código de
